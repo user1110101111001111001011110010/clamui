@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+.envrc
+.aws/
+.codex/
+.netrc
+.npmrc
+.pypirc
+.ssh/
+id_rsa
+id_ed25519
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local ClamUI configuration, history, databases, and temporary scan data
+.config/clamui/
+.local/share/clamui/
+.local/state/clamui/
+config/clamui/
+state/clamui/
+data/clamui/
+.clamui/
+clamui-data/
+config.toml
+*.local.toml
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.cvd
+*.cld
+freshclam.dat
+scan-*.list
+clamui-freshclam-*/
+
+# Logs and temporary files
+*.log
+logs/
+*.tmp
+*.swp
+*.bak
+
+# IDE and operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Node.js (only if web tooling is added later)
+node_modules/
