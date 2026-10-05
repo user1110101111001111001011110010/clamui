@@ -195,5 +195,5 @@ errors, cancellation, incomplete output, and updates. Fixture databases do not
 replace testing with a real ClamAV installation.
 
 Design documents: [architecture](docs/architecture.md), [full menu](docs/menu.md).
-The Russian README and design documents are available in `README.ru.md` and
-`docs/*.ru.md`.
+Russian documentation: [README](README.ru.md), [architecture](docs/architecture.ru.md),
+[full menu](docs/menu.ru.md), [mirrors](docs/mirrors.ru.md).
