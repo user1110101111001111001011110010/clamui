@@ -1,136 +1,136 @@
-# Полное дерево меню ClamUI
+# Complete ClamUI menu tree
 
-Целевой проект интерфейса. Текущее сокращённое меню прототипа описано в [README](../README.md).
-Пользовательское обновление в прототипе уже работает без root; системное применение
-через авторизацию в этом дереве относится к будущему системному backend.
-Это дерево охватывает все запланированные
-этапы архитектуры. `[позже]` — дополнительные возможности этапа 4; остальные пункты
-появляются по мере реализации этапов 1–3. `…` — выбранная запись списка, не скрытое
-подменю. «Назад» доступно через Esc на каждом вложенном экране.
+This is the target interface design. The prototype's current reduced menu is
+described in the [README](../README.md). Per-user updates already work without
+root; system changes through authorization in this tree belong to a future system
+backend. The tree covers all planned architecture stages. `[later]` marks extra
+stage-4 features; other items appear as stages 1–3 are implemented. `…` is a
+selected list entry, not a hidden submenu. Esc goes back from every nested screen.
 
 ```text
 ClamUI
-├── Проверка
-│   ├── Новая проверка
-│   │   ├── Добавить файл / папку: дерево или ввод пути
-│   │   ├── Выбранные пути → удалить из списка / очистить список
-│   │   ├── Параметры этой проверки
-│   │   │   ├── Включать вложенные папки
-│   │   │   ├── Исключения: добавить / изменить / удалить
-│   │   │   ├── Символьные ссылки и другие файловые системы
-│   │   │   ├── Лимиты файлов и архивов
-│   │   │   └── Движок: clamscan / clamd [позже]
-│   │   └── Проверить параметры и запустить
-│   ├── Текущая проверка
-│   │   ├── Фаза, время, счётчики и доступный прогресс
-│   │   ├── Находки в кратком списке внизу экрана → прокрутка PgUp/PgDn
-│   │   ├── Подробный журнал ClamAV → полный RAW-вывод, включая чистые файлы
-│   │   ├── Находки → запись → подробности
-│   │   ├── Ошибки и пропущенные файлы → причина
-│   │   └── Отменить → подтверждение
-│   └── Расписание [позже]
-│       ├── Список заданий → создать / изменить / удалить
-│       └── Задание → пути / параметры / время / включить или выключить
-├── История проверок
-│   ├── Фильтры: период / результат / наличие угроз
-│   ├── Проверка…
-│   │   ├── Сводка: движок, базы, покрытие, длительность
-│   │   ├── Находки → файл…
-│   │   │   ├── Путь, сигнатура, состояние файла
-│   │   │   ├── Проверить повторно
-│   │   │   └── В карантин → проверка идентичности → подтверждение
-│   │   ├── Ошибки, пропуски и диагностика
-│   │   └── Повторить проверку → просмотр параметров → запуск
-│   └── Очистить историю → выбрать период → подтверждение
-├── Карантин
-│   ├── Фильтры: дата / сигнатура / состояние операции
-│   ├── Файл…
-│   │   ├── Сведения: исходный путь, причина, дата, хеш
-│   │   ├── Восстановить → исходное или другое место → подтверждение
-│   │   └── Удалить навсегда → подтверждение
-│   └── Незавершённые операции → сведения / повторить безопасное восстановление
-├── Базы и обновления
-│   ├── Состояние
-│   │   ├── Версии ClamAV и баз, дата баз
-│   │   ├── Служба обновления и последнее обновление
-│   │   └── Действующий профиль и расхождения с черновиком
-│   ├── Обновить сейчас → ход операции → результат
-│   ├── Источники обновлений
-│   │   ├── Режим
-│   │   │   ├── Официальные серверы
-│   │   │   └── Только свои зеркала — официальные выключены
-│   │   ├── Известные зеркала → зеркало…
-│   │   │   ├── Microsoft → выбрать основным
-│   │   │   ├── TrueNetwork → выбрать основным / резервным
-│   │   │   ├── clamav-mirror.ru → выбрать основным / резервным
-│   │   │   └── Официальный CDN → официальный режим
-│   │   ├── Свои зеркала
-│   │   │   ├── Добавить → название / адрес / включено
-│   │   │   └── Зеркало…
-│   │   │       ├── Изменить название и адрес
-│   │   │       ├── Включить / выключить
-│   │   │       ├── Проверить доступность и перенаправления
-│   │   │       └── Удалить → подтверждение
-│   │   └── Профили
-│   │       ├── Создать / сохранить черновик
-│   │       └── Профиль… → открыть / переименовать / удалить
-│   ├── Параметры обновления
-│   │   ├── Автоматические обновления: включить / выключить
-│   │   ├── Проверок в сутки
-│   │   └── Таймаут подключения / чтения
-│   ├── Применить настройки
-│   │   ├── Проверка профиля и совместимости
-│   │   ├── Просмотр системных изменений и отключаемых источников
-│   │   └── Применить → авторизация → результат
-│   ├── Журнал обновлений → операция… → источники / версии / ошибки
-│   └── Восстановление настроек
-│       ├── Посмотреть предыдущую конфигурацию
-│       ├── Вернуть → просмотр режима и изменений → авторизация
-│       └── Перечитать текущие системные настройки
-├── Настройки
-│   ├── Предел размера файла: --max-filesize
-│   ├── Предел объёма сканирования: --max-scansize
-│   ├── Проверка по умолчанию
-│   │   ├── Вложенные папки
-│   │   ├── Исключения: добавить / изменить / удалить
-│   │   ├── Символьные ссылки и другие файловые системы
-│   │   ├── Лимиты файлов и архивов
-│   │   └── Движок: clamscan / clamd и локальный socket [позже]
-│   ├── Интерфейс
-│   │   ├── Язык: русский / английский
-│   │   ├── Палитра: тёмная / светлая / без цвета
-│   │   └── Символы: Unicode / ASCII
-│   ├── История → срок хранения
-│   └── Сбросить пользовательские настройки → подтверждение
-├── Справка
-│   ├── Клавиши и навигация
-│   ├── Значение результатов и ограничения проверки
-│   ├── Настройка зеркал и отключение официальных источников
-│   ├── Команды CLI
-│   ├── Диагностика: зависимости / права / состояние служб
-│   └── О программе
-└── Выход
-    └── При активной проверке: остаться / отменить проверку и выйти
+├── Scan
+│   ├── New scan
+│   │   ├── Add file / folder: browser or path input
+│   │   ├── Selected paths → remove from list / clear list
+│   │   ├── Scan options
+│   │   │   ├── Include subdirectories
+│   │   │   ├── Exclusions: add / edit / remove
+│   │   │   ├── Symlinks and other filesystems
+│   │   │   ├── File and archive limits
+│   │   │   └── Engine: clamscan / clamd [later]
+│   │   └── Validate options and start
+│   ├── Current scan
+│   │   ├── Phase, elapsed time, counters, and available progress
+│   │   ├── Findings in a short list at the bottom → scroll with PgUp/PgDn
+│   │   ├── Full ClamAV log → raw output, including clean files
+│   │   ├── Finding → entry → details
+│   │   ├── Errors and skipped files → reason
+│   │   └── Stop → confirmation
+│   └── Schedule [later]
+│       ├── Job list → create / edit / remove
+│       └── Job → paths / options / time / enable or disable
+├── Scan history
+│   ├── Filters: period / result / detections
+│   ├── Scan…
+│   │   ├── Summary: engine, databases, coverage, duration
+│   │   ├── Findings → file…
+│   │   │   ├── Path, signature, file state
+│   │   │   ├── Scan again
+│   │   │   └── Quarantine → verify identity → confirm
+│   │   ├── Errors, skipped files, and diagnostics
+│   │   └── Repeat scan → review options → start
+│   └── Clear history → choose period → confirm
+├── Quarantine
+│   ├── Filters: date / signature / operation state
+│   ├── File…
+│   │   ├── Details: original path, reason, date, hash
+│   │   ├── Restore → original or other location → confirm
+│   │   └── Delete permanently → confirm
+│   └── Incomplete operations → details / retry safe restore
+├── Databases and updates
+│   ├── Status
+│   │   ├── ClamAV and database versions, database date
+│   │   ├── Update service and last update
+│   │   └── Active profile and differences from draft
+│   ├── Update now → progress → result
+│   ├── Update sources
+│   │   ├── Mode
+│   │   │   ├── Official servers
+│   │   │   └── Private mirrors only — official sources disabled
+│   │   ├── Known mirrors → mirror…
+│   │   │   ├── Microsoft → set as primary
+│   │   │   ├── TrueNetwork → set as primary / backup
+│   │   │   ├── clamav-mirror.ru → set as primary / backup
+│   │   │   └── Official CDN → official mode
+│   │   ├── Custom mirrors
+│   │   │   ├── Add → name / address / enabled
+│   │   │   └── Mirror…
+│   │   │       ├── Edit name and address
+│   │   │       ├── Enable / disable
+│   │   │       ├── Check availability and redirects
+│   │   │       └── Remove → confirm
+│   │   └── Profiles
+│   │       ├── Create / save draft
+│   │       └── Profile… → open / rename / remove
+│   ├── Update options
+│   │   ├── Automatic updates: enable / disable
+│   │   ├── Checks per day
+│   │   └── Connection / read timeout
+│   ├── Apply settings
+│   │   ├── Validate profile and compatibility
+│   │   ├── Review system changes and disabled sources
+│   │   └── Apply → authorize → result
+│   ├── Update log → operation… → sources / versions / errors
+│   └── Restore settings
+│       ├── View previous configuration
+│       ├── Restore → review mode and changes → authorize
+│       └── Reload current system settings
+├── Settings
+│   ├── Maximum file size: --max-filesize
+│   ├── Maximum scan size: --max-scansize
+│   ├── Default scan options
+│   │   ├── Recursive directories
+│   │   ├── Exclusions: add / edit / remove
+│   │   ├── Symlinks and other filesystems
+│   │   ├── File and archive limits
+│   │   └── Engine: clamscan / clamd and local socket [later]
+│   ├── Interface
+│   │   ├── Language: English / Russian
+│   │   ├── Palette: dark / light / no color
+│   │   └── Characters: Unicode / ASCII
+│   ├── History → retention period
+│   └── Reset user settings → confirm
+├── Help
+│   ├── Keys and navigation
+│   ├── Result meanings and scan limitations
+│   ├── Mirror setup and disabling official sources
+│   ├── CLI commands
+│   ├── Diagnostics: dependencies / permissions / service status
+│   └── About
+└── Exit
+    └── During a scan: stay / cancel scan and exit
 ```
 
-Сохранение или открытие профиля не применяет его к системе. Удаление сохранённого
-профиля не переключает действующий источник. Сброс пользовательских настроек не
-меняет системную конфигурацию обновлений и не включает официальные серверы.
-Отключённая автоматическая проверка обновлений не запрещает «Обновить сейчас».
+Saving or opening a profile does not apply it to the system. Removing a saved
+profile does not switch the active source. Resetting user settings does not change
+system update configuration or enable official servers. Disabling automatic update
+checks does not disable **Update now**.
 
-При private_only нужен хотя бы один включённый адрес. Недоступность всех зеркал
-заканчивается ошибкой с сохранением существующих баз; никаких скрытых переходов
-на официальный источник. Сведения о границах сетевой гарантии — в architecture.md.
-Проверка доступности использует только введённый адрес без следования междоменным
-перенаправлениям и не заменяет проверку подписи скачанной базы.
+`private_only` requires at least one enabled address. If all mirrors are unavailable,
+the update fails and existing databases are preserved; there is no hidden fallback
+to an official source. See [architecture.md](architecture.md) for network guarantee
+limitations. Availability checks use only the entered address and do not follow
+cross-domain redirects; they do not replace signature verification of downloaded
+databases.
 
-Параметры, которые управляются конфигурацией clamd, показываются только для чтения
-с объяснением. Для отсутствующих зависимостей или прав действия недоступны с причиной.
-Авторизация нужна для системных изменений, а не для просмотра и черновиков.
-Применение конфигурации выполняется системным helper до конца даже при выходе TUI;
-повторный запуск читает результат из журнала. Уже начатое системное обновление также
-не зависит от открытого терминала; поведение отличается от пользовательского сканирования.
+Options controlled by clamd configuration are read-only and include an explanation.
+Unavailable actions explain whether a dependency or permission is missing.
+Authorization is required for system changes, not for viewing screens or editing
+drafts. A system helper completes configuration changes even if the TUI exits; a
+later launch reads the result from its log. A started system update likewise does
+not depend on the terminal staying open, unlike a per-user scan.
 
-Клавиши: ↑↓ — выбор, Enter — открыть/выполнить, Tab/Shift+Tab — поля,
-Space — переключатель, Esc — назад, F1 — справка, Ctrl+C — отмена текущей
-пользовательской операции. Ctrl+C не прерывает атомарное применение системных настроек.
+Keys: ↑↓ select, Enter open/run, Tab/Shift+Tab move between fields, Space toggle,
+Esc back, F1 help, Ctrl+C cancel the current per-user operation. Ctrl+C does not
+interrupt an atomic system-configuration change.

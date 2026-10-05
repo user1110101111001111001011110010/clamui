@@ -1,427 +1,427 @@
-# Архитектура ClamUI для Linux Mint
+# ClamUI architecture for Linux Mint
 
-Статус: целевая архитектура. Реализован сокращённый прототип, см. [README](../README.md).
-Прототип использует стандартный curses вместо Textual и объединённое ядро core.py;
-системное применение зеркал, карантин и прочие последующие этапы ещё не реализованы.
-В прототипе 0.2 есть выбор файлов, дополнение пути, процент по фиксированному списку
-и пользовательское обновление freshclam. Системный backend ниже — отдельный будущий режим.
-Предположение: ClamUI — терминальная оболочка ClamAV с меню (TUI) и CLI-командами.
-Целевая платформа первой версии: Linux Mint 22.x, независимо от Cinnamon/MATE/Xfce; SSH — после проверки терминальной совместимости. LMDE — отдельная матрица совместимости.
+Status: target architecture. The current prototype is reduced; see the
+[README](../README.md). It uses standard-library curses rather than Textual and a
+combined `core.py` module. System mirror management, quarantine, and later stages
+are not implemented. Prototype 0.2 includes file selection, path completion,
+fixed-list progress, per-user FreshClam updates, and English/Russian UI strings.
+The system backend below is a separate future mode.
 
-## Цели и границы
+Assumption: ClamUI is a menu-driven ClamAV terminal frontend (TUI) with CLI
+commands. The initial target is Linux Mint 22.x across Cinnamon, MATE, and Xfce.
+SSH support requires a terminal compatibility check; LMDE needs a separate support
+matrix.
 
-Проверка выбранных файлов и каталогов, понятные результаты, история проверок,
-управляемый карантин, состояние и обновление антивирусных баз с выбором зеркал.
-Режим «Только свои зеркала» исключает официальный источник и автоматический fallback к нему.
-Приложение работает локально, без облачного сервера и телеметрии.
-Постоянная защита при доступе к файлам, сканирование всей системы с root и
-автоматическое удаление угроз не входят в первую версию.
+## Goals and scope
 
-## Технологические решения
+Scan selected files and directories, show clear results and history, provide
+user-managed quarantine, and report database status and updates with mirror
+selection. **Private mirrors only** disables official sources and automatic
+fallback. The application works locally without a cloud service or telemetry.
+On-access protection, root-wide scans, and automatic threat deletion are outside
+the first release.
 
-| Область | Решение | Причина |
+## Technology choices
+
+| Area | Choice | Reason |
 |---|---|---|
-| Язык | Python 3 из дистрибутива | Простая интеграция с системными библиотеками |
-| Интерфейс | Python + Textual | Терминальные меню, таблицы, формы, управление клавиатурой |
-| CLI | argparse | Автоматизация и запуск без интерактивного терминала |
-| Движок MVP | clamscan отдельным процессом | Не требует постоянно работающего clamd |
-| Дополнительный движок | clamd через локальный Unix socket | Повторные проверки без загрузки баз при каждом запуске |
-| Данные | SQLite через стандартный sqlite3 | Транзакции и локальная история |
-| Настройки | TOML в XDG_CONFIG_HOME | Конфигурация без зависимости от рабочего стола |
-| Фоновая работа | asyncio subprocess и выделенный worker для дисковых операций | UI не блокируется на процессе, файловом вводе-выводе или SQLite |
-| Доставка | Нативный .deb | Доступ к системному ClamAV и интеграции рабочего стола |
+| Language | Distribution Python 3 | Integrates with system libraries |
+| Interface | Python + Textual (target design) | Terminal menus, tables, forms, keyboard navigation |
+| CLI | argparse | Automation and non-interactive use |
+| MVP engine | `clamscan` subprocess | Does not require a persistent `clamd` daemon |
+| Optional engine | `clamd` over a local Unix socket | Repeated scans without reloading databases |
+| Data | Standard-library SQLite | Transactions and local history |
+| Settings | TOML under XDG_CONFIG_HOME | No desktop-environment dependency |
+| Background work | asyncio subprocesses and a disk-operation worker | Keeps process and file I/O off the UI loop |
+| Delivery | Native `.deb` | Access to system ClamAV and desktop integration |
 
-TUI уменьшает зависимость от рабочего стола, но не отменяет сопровождение библиотек.
-Textual изолирован в слое tui; ядро его не импортирует. Зависимости фиксируются для сборки.
-Версии библиотек проверяются на минимальной поддерживаемой системе, а не по API
-последних upstream-релизов. Flatpak не является основным форматом: доступ к
-файлам хоста и системному демону требует отдельного проекта интеграции.
+A TUI reduces desktop dependence but does not remove library maintenance. In the
+target design, Textual stays in the TUI layer and is not imported by the core.
+Build dependencies are pinned and tested on the oldest supported system, rather
+than assumed compatible from the latest upstream APIs. Flatpak is not the primary
+format: host-file and system-daemon access need a separate integration design.
 
-## Компоненты
+## Components
 
 ```mermaid
 flowchart TD
-    UI[Textual TUI: меню, сканирование, история, карантин]
+    UI[Textual TUI: menus, scans, history, quarantine]
     CMD[CLI: scan, history, status]
     APP[Application: ScanCoordinator, HistoryService, QuarantineService, UpdateService]
     DOMAIN[Domain: ScanJob, Finding, ScanPolicy, ScanResult]
     ENGINE[ScanEngine interface]
-    CLI[ClamscanEngine]
-    DAEMON[ClamdEngine — следующий этап]
+    CLIENGINE[ClamscanEngine]
+    DAEMON[ClamdEngine — later]
     DB[(SQLite)]
-    Q[Каталог карантина]
-    SYS[Состояние баз и конфигурация]
+    Q[Quarantine directory]
+    SYS[Database and configuration state]
     UI --> APP
     CMD --> APP
     APP --> DOMAIN
     APP --> ENGINE
-    ENGINE --> CLI
+    ENGINE --> CLIENGINE
     ENGINE --> DAEMON
     APP --> DB
     APP --> Q
     APP --> SYS
     APP --> UP[UpdateBackend]
-    UP --> LOCAL[Локальный freshclam: пользовательские базы — реализовано]
-    UP --> HELPER[Системный helper: D-Bus + polkit — будущий режим]
-    HELPER --> FC[freshclam: конфигурация и служба]
+    UP --> LOCAL[Per-user FreshClam: implemented]
+    UP --> HELPER[System helper: D-Bus + polkit — future mode]
+    HELPER --> FC[FreshClam configuration and service]
 ```
 
-Это модульное терминальное приложение, без собственного HTTP API и микросервисов.
-TUI работает в главном asyncio loop. Адаптер асинхронно читает процесс сканера;
-блокирующие файловые операции и SQLite выполняются в выделенном worker.
-Соединение SQLite создаётся и используется только в этом worker.
-События ядра преобразуются в Textual messages на границе TUI; обновления ограничены
-по частоте. Заданием владеет application, а не экран: переход в историю не отменяет
-сканирование. CLI использует те же сценарии без импорта Textual.
+This is a modular terminal application, not an HTTP API or a set of microservices.
+In the target design, the TUI runs on the main asyncio loop. An adapter reads the
+scanner process asynchronously; blocking file operations and SQLite work run in a
+dedicated worker. The SQLite connection is created and used only in that worker.
+Core events become Textual messages at the TUI boundary, with update frequency
+limited. The application owns jobs rather than screens, so opening history does
+not cancel a scan. The CLI uses the same use cases without importing Textual.
 
-## Меню и взаимодействие
+## Menu and interaction
 
 ```text
-ClamUI                                  Базы: состояние / дата
+ClamUI                                  Databases: status / date
 
-  > Проверить файлы или папку
-    История проверок
-    Карантин
-    Базы и обновления
-    Настройки
-    Справка
-    Выход
+  > Scan files or a folder
+    Scan history
+    Quarantine
+    Databases and updates
+    Settings
+    Help
+    Exit
 
-↑↓ Выбор   Enter Открыть   Tab Следующее поле   Esc Назад   F1 Помощь
+↑↓ Select   Enter Open   Tab Next field   Esc Back   F1 Help
 ```
 
-Выбор цели — поле пути с дополнением и дерево каталогов, несколько целей.
-Экран проверки показывает фазу, доступные счётчики, находки, ошибки и отмену.
-Все действия доступны с клавиатуры; мышь необязательна. Опасные действия требуют
-диалога с путём и названием операции, без заранее выбранного подтверждения.
-Целевая геометрия — от 80×24; меньший размер показывает просьбу увеличить терминал,
-сохраняя задание. Предусмотрены ASCII-оформление, режим без цвета и текстовые статусы.
-Пути и сообщения сканера выводятся как данные: управляющие символы экранируются,
-ANSI/OSC-последовательности и Rich markup из входных строк не исполняются.
-Оригинальные пути хранятся отдельно от отображаемых значений.
+Target selection combines a path field with completion and a directory tree, and
+supports multiple paths. The scan screen shows phase, available counters, findings,
+errors, and cancellation. Every action is keyboard accessible; the mouse is
+optional. Destructive actions require a dialog showing the path and operation,
+with no preselected confirmation. The target geometry starts at 80×24; smaller
+terminals show a resize message while preserving the job. ASCII styling, no-color
+mode, and textual status indicators are supported. Paths and scanner messages are
+data: control characters are escaped, and input ANSI/OSC sequences or Rich markup
+are never executed. Original paths are stored separately from display strings.
 
-Проектируемые команды (пока не реализованы):
+Planned commands (not implemented in this form yet):
 
 ```sh
-clamui                             # меню
-clamui scan -- ~/Downloads          # проверка без TUI
-clamui scan --json -- ~/Downloads   # один итоговый JSON в stdout
-clamui history                     # история
-clamui status                      # состояние движка и баз
+clamui                             # menu
+clamui scan -- ~/Downloads          # scan without TUI
+clamui scan --json -- ~/Downloads   # one JSON result on stdout
+clamui history                     # history
+clamui status                      # engine and database status
 ```
 
-CLI: 0 — завершено без находок и известных пропусков; 1 — находки без ошибок;
-2 — ошибка или неполная проверка, в том числе с находками; 130 — отмена по Ctrl+C.
-JSON содержит отдельные поля для находок и полноты результата, версия схемы явная.
-Диагностика идёт в stderr. Без TTY запуск без аргументов выводит справку.
-Поддерживается `--no-color`. Одновременные изменяющие операции TUI/CLI запрещает
-неблокирующий flock в приватном каталоге состояния; второй экземпляр сообщает
-о занятом приложении. Чтение истории допускается отдельно.
+CLI codes: 0 means completed with no findings or known skips; 1 means findings
+without errors; 2 means an error or incomplete scan, including one with findings;
+130 means Ctrl+C cancellation. JSON has separate finding and completeness fields
+and an explicit schema version. Diagnostics go to stderr. Running without arguments
+and without a TTY prints help. `--no-color` is supported. A non-blocking `flock` in
+the private state directory prevents concurrent changing TUI/CLI operations; a
+second instance reports that ClamUI is busy. History reads may run separately.
 
-## Контракты и жизненный цикл проверки
+## Scan contract and lifecycle
 
-`ScanEngine` принимает `ScanRequest` и публикует события `ScanStarted`,
-`FindingDetected`, `PathFailed`, `ScanProgress`, `ScanFinished`.
-Контракт содержит `capabilities`, чтобы UI не предлагал неподдерживаемые настройки.
-Не все параметры clamscan применимы к clamd: конфигурация демона принадлежит системе.
+`ScanEngine` accepts a `ScanRequest` and publishes `ScanStarted`, `FindingDetected`,
+`PathFailed`, `ScanProgress`, and `ScanFinished` events. A `capabilities` field
+prevents the UI from offering unsupported options. Not all `clamscan` options apply
+to `clamd`; daemon configuration belongs to the system.
 
-`ScanRequest`: идентификатор, абсолютные пути, рекурсивность, исключения,
-политика символьных ссылок и точек монтирования, лимиты, выбранный движок.
-`Finding`: исходный путь, имя сигнатуры, время, движок, снимок метаданных файла.
-`ScanResult`: количество проверенных файлов, находки, ошибки, пропуски,
-длительность, версия движка и баз, признак неполного покрытия.
+`ScanRequest` contains an ID, absolute paths, recursion, exclusions, symlink and
+mount-point policy, limits, and selected engine. `Finding` contains the original
+path, signature name, time, engine, and a file-metadata snapshot. `ScanResult`
+contains files checked, findings, errors, skips, duration, engine/database
+versions, and an incomplete-coverage flag.
 
-Состояния задания: `queued → running → completed | failed | cancelled`.
-Обнаружение угроз — результат проверки, а не ошибка выполнения.
-Покрытие учитывается отдельно: завершённый процесс не гарантирует проверку всех файлов.
-Задания, оставшиеся running после аварийного завершения приложения, становятся interrupted.
+Job states are `queued → running → completed | failed | cancelled`. A detection is
+a scan result, not an execution failure. Coverage is tracked separately because a
+finished process does not guarantee that every file was checked. Jobs left in
+`running` after a crash become `interrupted`.
 
-MVP выполняет одно задание за раз. Во время проверки интерфейс показывает текущую
-фазу, время и доступные счётчики. Процент отображается только при достоверно известном
-объёме; рекурсивной проверке без такого объёма соответствует неопределённый индикатор.
-Выход через меню при активной проверке предлагает остаться либо отменить её.
-Ctrl+C инициирует отмену; SIGHUP/SIGTERM — остановку собственного сканера и сохранение
-частичного результата по возможности. После SIGKILL состояние восстанавливается
-как interrupted при следующем запуске. TUI восстанавливает режим терминала при
-штатном выходе и обрабатываемых исключениях. Проверки после закрытия терминала
-в MVP не продолжаются; для длительной SSH-сессии можно использовать tmux.
+The MVP runs one job at a time. During a scan the UI shows phase, elapsed time, and
+available counters. A percentage appears only when the work count is known; a
+recursive scan without a reliable total uses an indeterminate indicator. Exiting
+through the menu offers to stay or cancel. Ctrl+C requests cancellation; SIGHUP and
+SIGTERM stop ClamUI's scanner and preserve a partial result where possible. After
+SIGKILL, the next launch marks the job interrupted. The TUI restores terminal mode
+after normal exit and handled exceptions. MVP scans do not continue after the
+terminal closes; use tmux for long SSH sessions.
 
-## Адаптер clamscan
+## `clamscan` adapter
 
-- Запуск subprocess с массивом аргументов, без shell; пути отделяются от опций через `--`.
-- Явная политика перехода по symlink и файловым системам; специальные файлы не сканируются.
-- Непрерывное чтение stdout/stderr, контролируемый размер диагностического журнала.
-- Стабильная локаль процесса, версионированный парсер, сохранение неизвестных сообщений как диагностики.
-- Коды завершения 0/1/2 нормализуются в отсутствие находок / находки / ошибку.
-  Уже полученные находки не теряются при последующей ошибке.
-- Текстовый вывод не считается надёжным идентификатором файла: необычные имена,
-  включая переводы строк, требуют отдельной обработки. Неоднозначная строка не может
-  разрешать перемещение или удаление файла; UI показывает диагностическое ограничение.
-- Отмена: завершить собственную группу процессов, затем принудительно остановить по
-  таймауту, прочитать оставшийся вывод и сохранить частичный результат.
-- Недоступные пути, лимиты, исключения и прочие известные пропуски отражаются отдельно.
-  Формулировка результата: «Угроз не обнаружено в проверенных файлах».
+- Launch subprocesses with an argument array and no shell; separate paths from
+  options with `--`.
+- Apply explicit symlink and filesystem traversal policy; do not scan special files.
+- Continuously read stdout/stderr and cap diagnostic-log size.
+- Use a stable process locale and versioned parser; keep unknown messages as diagnostics.
+- Normalize exit codes 0/1/2 to clean / findings / error. Keep findings received
+  before a later process error.
+- Do not treat text output as a reliable file identity. Unusual names, including
+  newlines, need separate handling. An ambiguous line must never authorize moving
+  or deleting a file; the UI shows the limitation.
+- Cancel by terminating the owned process group, force-killing after a timeout,
+  draining remaining output, and saving a partial result.
+- Report inaccessible paths, limits, exclusions, and other known skips separately.
+  Use the result wording “No threats found in the files that were scanned”.
 
-## Дополнительный адаптер clamd
+## Optional `clamd` adapter
 
-Подключается только к локальному Unix socket. Доступность и права проверяются заранее.
-Передача открытого файла через FILDES, где поддерживается, или INSTREAM позволяет
-работать с файлами, доступными пользователю, без предположения о доступе демона к пути.
-Приложение сохраняет собственное соответствие ответа исходному файлу, учитывает лимит
-потока и ограничения сканера. Отмена прекращает отправку новых запросов; немедленная
-остановка уже начатой проверки в демоне не гарантируется.
-Fallback на clamscan допускается до начала задания с указанием движка в UI;
-ошибка посреди задания не запускает незаметно повторную полную проверку.
+Connect only to a local Unix socket and check availability and permissions first.
+FILDES, where supported, or INSTREAM can pass an open file so the daemon need not
+have path access. The application keeps its own response-to-file mapping, enforces
+stream limits, and accounts for scanner restrictions. Cancellation stops sending
+new requests; immediate cancellation of a request already running in the daemon is
+not guaranteed. Fallback to `clamscan` is allowed only before a job starts and must
+show the engine in the UI. An error mid-job must not silently start a second full scan.
 
-## Права и обновление баз
+## Permissions and database updates
 
-### Реализованный пользовательский backend
+### Implemented per-user backend
 
-Кнопка обновления запускает freshclam с отдельным временным конфигом в закрытом
-каталоге `/tmp/clamui-freshclam-*` и `--datadir` в том же каталоге. В Ubuntu/Mint
-AppArmor профиль freshclam разрешает файлы владельца в `/tmp/**`, но может запрещать
-пользовательский XDG_STATE_HOME. Данные downloaded-процесса после проверки копируются
-в staging под XDG_DATA_HOME/clamui и активируются атомарным указателем на том же
-файловом разделе. Сохранённые зеркала применяются только к этой операции.
-Конфигурация системы не читается для наследования источников и не изменяется.
-Текущие базы копируются в staging; freshclam проверяет подписи и загрузку баз,
-затем при успехе атомарно переключается указатель active-database. При неудаче
-прежние базы сохраняются; freshclam.dat сохраняет интервалы повторов. Сканирование
-явно получает --database с активным каталогом. До первого обновления читает системные базы.
-Общий activity lock исключает проверку во время обновления. UI показывает источник
-баз, реальный журнал и отмену. Файловый список сканирования сначала подсчитывается,
-потом передаётся clamscan через --file-list: процент учитывает уникальные полученные
-результаты, ошибки и пропуски отдельно. Неизвестные результаты не заменяются оценками.
+The update action runs FreshClam with a temporary configuration in a private
+`/tmp/clamui-freshclam-*` directory and a `--datadir` in the same directory. On
+Ubuntu/Mint, the FreshClam AppArmor profile permits owner files under `/tmp/**` but
+may deny the user's XDG_STATE_HOME. After verification, downloaded data is copied
+into staging under XDG_DATA_HOME/clamui and activated with an atomic pointer on the
+same filesystem. Saved mirrors apply only to this update. System configuration is
+neither read to inherit sources nor modified.
 
-### Будущий системный backend
+Current databases are copied into staging. FreshClam checks signatures and database
+loading, then ClamUI atomically switches the `active-database` pointer on success.
+On failure, the prior databases remain active; `freshclam.dat` preserves retry
+intervals. Scans receive `--database` with the active directory and use system
+databases until the first local update. A shared activity lock prevents scanning
+during updates. The UI shows database source, live log, and cancellation.
 
-Следующие требования относятся к управлению общей системной службой и не являются
-условием пользовательского обновления. Выбор backend должен быть явным; смешивание
-каталогов баз и конфигураций запрещено.
+Scan files are inventoried before `clamscan` receives them through `--file-list`.
+Progress counts unique received results; errors and skips remain separate. Unknown
+results are never replaced with estimates.
 
-TUI и сканирующий процесс запускаются от обычного пользователя.
-Нет доступа к файлу — запись о пропуске, без автоматического повышения привилегий.
-ClamAV и базы устанавливаются средствами дистрибутива. При отсутствии баз
-сканирование недоступно с понятным объяснением.
-Обновлением владеет один системный freshclam: TUI не запускает конкурирующий процесс.
-Редактирование профиля не требует root; его применение к системе и запрос обновления
-выполняет узкий D-Bus helper с polkit. Для терминала без графического агента
-предусмотрен текстовый агент авторизации; при его отсутствии доступен только просмотр
-и редактирование черновика. TUI не получает и не хранит пароль администратора.
-Настройка системных источников общая для всех пользователей, что явно указано в UI.
+### Future system backend
 
-### Модель и границы модулей
+These requirements apply to management of the shared system service, not to
+per-user updates. Backend choice must be explicit; database directories and
+configurations must never be mixed.
 
-- `UpdateProfile`: id, name, mode (`official` / `private_only`), список зеркал,
-  автоматические обновления, checks_per_day, connect_timeout, receive_timeout.
-- `MirrorEndpoint`: id, label, base_url, enabled. HTTPS по умолчанию; HTTP допускается
-  при явном выборе для локального зеркала. URL с userinfo, управляющими символами,
-  query/fragment и неподдерживаемыми схемами отвергается. Аутентификация зеркал вне v1.
-- `UpdateService`: черновик, валидация, предварительный просмотр, применение, запрос
-  обновления, статус. Состояния: draft → validated → applying → applied | failed.
-- `UpdateBackend`: read_effective_config, validate_profile, preview_changes,
-  apply_profile(expected_revision), request_update, get_update_status.
-- `FreshclamConfigAdapter`: версия-зависимое преобразование профиля в директивы;
-  неизвестная версия/неподдерживаемая возможность блокирует применение с объяснением.
-- `SystemUpdateHelper`: проверка отправителя и polkit, системная блокировка,
-  конфигурация и управление фиксированной службой. Не принимает shell-команды,
-  произвольные пути, произвольные директивы и OnUpdateExecute/OnErrorExecute.
-- `UpdateRun`: профиль и ревизия, время, использованный источник при известности,
-  версии баз до/после, результат, диагностика. События обновления независимы от сканирования.
+The TUI and scanner run as the regular user. An inaccessible file becomes a skip;
+there is no automatic privilege escalation. Install ClamAV and databases through
+the distribution. If databases are missing, disable scanning with a clear reason.
+One system FreshClam owns updates; the TUI must not launch a competing process.
+Editing a profile needs no root access, but applying it and requesting an update
+uses a narrow D-Bus helper protected by polkit. A text authorization agent is
+needed for terminals without a graphical agent; otherwise only viewing and draft
+editing are available. The TUI never receives or stores an administrator password.
+System source settings affect every user, which the UI must state clearly.
 
-Профили-черновики хранятся в пользовательском TOML. Применённая ревизия и журнал
-системных изменений — в root-owned `/var/lib/clamui/`; действующая конфигурация
-freshclam является источником истины. TUI различает «сохранено», «применено» и
-«внешние изменения», не выдаёт сохранённый переключатель за фактическое состояние.
+### Update model and module boundaries
 
-### Режимы источников
+- `UpdateProfile`: ID, name, mode (`official` / `private_only`), mirrors, automatic
+  updates, checks_per_day, connect_timeout, receive_timeout.
+- `MirrorEndpoint`: ID, label, base_url, enabled. HTTPS by default; HTTP is allowed
+  only when explicitly chosen for a local mirror. Reject userinfo, control
+  characters, query/fragment, and unsupported schemes. Mirror authentication is
+  outside v1.
+- `UpdateService`: draft, validation, preview, apply, update request, status.
+  States: `draft → validated → applying → applied | failed`.
+- `UpdateBackend`: `read_effective_config`, `validate_profile`, `preview_changes`,
+  `apply_profile(expected_revision)`, `request_update`, `get_update_status`.
+- `FreshclamConfigAdapter`: version-specific profile-to-directive conversion.
+  Unknown versions or unsupported capabilities block application with an explanation.
+- `SystemUpdateHelper`: caller and polkit validation, system lock, configuration,
+  and management of a fixed service. It accepts no shell commands, arbitrary paths,
+  arbitrary directives, `OnUpdateExecute`, or `OnErrorExecute`.
+- `UpdateRun`: profile and revision, time, known source, database versions before
+  and after, result, and diagnostics. Update events are independent from scan events.
 
-| Режим | Источники freshclam | Поведение при недоступности |
+Draft profiles live in user TOML. The applied revision and system-change log live
+under root-owned `/var/lib/clamui/`; the effective FreshClam configuration is the
+source of truth. The UI distinguishes “saved”, “applied”, and “external changes”
+and never presents a saved toggle as the actual system state.
+
+### Source modes
+
+| Mode | FreshClam sources | Behavior if unavailable |
 |---|---|---|
-| Официальный | DatabaseMirror database.clamav.net, штатная DNS-проверка | Ошибка с сохранением существующих баз |
-| Только свои зеркала | Только включённые PrivateMirror, минимум одно | Другие разрешённые частные зеркала, затем ошибка; официальный fallback запрещён |
+| Official | `DatabaseMirror database.clamav.net`, standard DNS check | Fail and preserve existing databases |
+| Private mirrors only | Enabled `PrivateMirror` entries only; at least one required | Try other allowed private mirrors, then fail; no official fallback |
 
-Переключатель «Официальные серверы: выключены» соответствует `private_only`.
-Добавление зеркала само по себе не меняет режим. В v1 смешанный режим не поддерживается:
-это исключает неоднозначность между резервным источником и полным отключением официального.
-Резервные частные зеркала передаются freshclam; UI не обещает строгий порядок,
-если конкретная версия freshclam его не гарантирует.
+The **Official servers: off** toggle means `private_only`. Adding a mirror does not
+change the mode. V1 does not support a mixed mode; this avoids ambiguity between a
+backup source and fully disabling official sources. Private backups are passed to
+FreshClam; the UI does not promise strict order unless the installed FreshClam
+version guarantees it.
 
-В private_only адаптер генерирует `PrivateMirror` вместо `DatabaseMirror`.
-PrivateMirror переопределяет DatabaseMirror, DNSDatabaseInfo и ScriptedUpdates:
-проверка версии через официальный DNS и инкрементальные scripted updates не используются.
-Скомпилированная конфигурация не содержит активных официальных DatabaseMirror,
-DNSDatabaseInfo или дополнительных DatabaseCustomURL. Старые дополнительные источники
-показываются в diff и отключаются при применении, а не игнорируются.
-Не использовать `DNSDatabaseInfo no` как универсальную команду отключения DNS.
-Обычный DNS для разрешения имени своего зеркала остаётся нужен.
+In `private_only`, the adapter generates `PrivateMirror` instead of `DatabaseMirror`.
+`PrivateMirror` overrides `DatabaseMirror`, `DNSDatabaseInfo`, and `ScriptedUpdates`:
+official DNS version checks and incremental scripted updates are not used. The
+compiled configuration contains no active official `DatabaseMirror`,
+`DNSDatabaseInfo`, or extra `DatabaseCustomURL`. Old extra sources appear in the diff
+and are disabled when applied, not silently ignored. Do not use `DNSDatabaseInfo no`
+as a universal DNS-off command. Ordinary DNS is still needed to resolve the private
+mirror's hostname.
 
-Пример фрагмента генерируемого freshclam.conf (не полный системный конфиг):
+Example generated `freshclam.conf` snippet (not a complete system config):
 
 ```text
 PrivateMirror https://mirror.example.org/clamav
 PrivateMirror https://backup.example.org/clamav
 ```
 
-Адреса выше — заглушки. Формат URL/пути проверяется для установленной версии.
-Зеркало должно раздавать совместимые базы ClamAV. Это выбор места загрузки подписанных
-баз, а не разрешение произвольных неподписанных сигнатур. Проверка подлинности баз
-остаётся включённой; ошибка подписи не запускает обход проверки или смену режима.
-PrivateMirror может потребовать скачивания полных баз — это отражается в справке.
+These addresses are placeholders. URL/path syntax is checked against the installed
+version. A mirror must serve compatible ClamAV databases. This selects where signed
+databases are downloaded from; it does not authorize arbitrary unsigned signatures.
+Database authentication stays enabled. A signature error never bypasses validation
+or changes mode. `PrivateMirror` may require full database downloads; explain this
+in help.
 
-Гарантия режима относится к источникам, DNS-проверке и fallback, которыми управляет
-freshclam. Она не является глобальным сетевым запретом для ОС: редирект зеркала,
-прокси или внешняя правка службы могут изменить маршрут. Проверка зеркала выявляет
-редиректы и отклоняет переходы на другой origin; HTTP redirects самого freshclam
-проверяются на целевых версиях отдельно. До сетевого контроля назначения нельзя
-обещать полное отсутствие любых пакетов к официальной инфраструктуре. Для строгой
-изоляции необходим отдельный egress allowlist/контролирующий proxy; UI не называет
-обычный профиль «сетевой блокировкой». Доступность зеркала не доказывает подлинность базы.
+The mode's guarantee covers the sources, DNS check, and fallback managed by
+FreshClam. It is not a system-wide network block: mirror redirects, proxies, or
+external service changes can alter the route. A mirror check detects redirects and
+rejects cross-origin changes; test FreshClam HTTP redirects separately on target
+versions. Until destination network traffic is controlled, do not promise that no
+packet can reach official infrastructure. Strict isolation requires an egress
+allowlist or controlling proxy; the UI must not call a normal profile a “network
+block”. Mirror availability does not prove database authenticity.
 
-### Применение и восстановление
+### Apply and recovery
 
-1. Проверить поля, наличие включённого зеркала и совместимость freshclam;
-   показать системную область действия, diff и отключаемые источники.
-2. После действия «Применить» авторизовать фиксированную операцию через polkit.
-   Helper заново валидирует данные, берёт системную блокировку и сверяет ревизию.
-3. Зафиксировать предыдущую конфигурацию и состояние службы; остановить текущий updater,
-   дождаться выхода. Если нельзя установить единственного владельца баз — отказ.
-4. Сгенерировать конфигурацию без произвольных пользовательских директив, проверить
-   синтаксис способом, поддержанным целевой версией. Записать через временный файл,
-   fsync и атомарную замену с сохранением системных прав. Не предполагать поддержку include.
-5. Запустить службу с новой конфигурацией, сверить фактический профиль и состояние.
-   «Применено» означает успешное применение, а не успешную загрузку новых баз.
-6. При ошибке не включать официальные источники автоматически. Если предыдущий профиль
-   нарушает новый запрет, оставить updater остановленным, сохранить базы, предложить
-   исправить настройки либо явно вернуть прежний режим. Журнал фаз позволяет восстановить
-   состояние после сбоя между заменой конфига и запуском службы.
+1. Validate fields, enabled mirrors, and FreshClam compatibility. Show system-wide
+   scope, the diff, and sources that will be disabled.
+2. After **Apply**, authorize a fixed operation through polkit. The helper validates
+   again, takes the system lock, and checks the revision.
+3. Record the previous config and service state; stop the current updater and wait
+   for it to exit. Refuse if a single database owner cannot be established.
+4. Generate config without arbitrary user directives and validate syntax using a
+   method supported by the target version. Write to a temporary file, fsync, then
+   atomically replace while preserving system permissions. Do not assume include
+   directives are supported.
+5. Start the service with the new config and verify effective profile and state.
+   “Applied” means the configuration applied successfully, not that databases updated.
+6. On failure, never enable official sources automatically. If the prior profile
+   violates the new restriction, leave the updater stopped, preserve databases, and
+   offer to fix settings or explicitly restore the prior mode. A phase log supports
+   recovery if a failure occurs between config replacement and service start.
 
-Внешние изменения конфига или пакетного обслуживания обнаруживаются по ревизии;
-несовпадение блокирует перезапись до повторного просмотра. Системный адаптер учитывает
-владение конфигурацией пакетами Mint/Debian; управление расписанием и ручной запрос
-обновления не создают второй freshclam. Во время сканирования уже загруженные базы
-используются до завершения задания; обновлённый clamd перезагружает базы штатным механизмом.
+External config edits or package maintenance are detected by revision. A mismatch
+blocks overwrite until reviewed again. The system adapter accounts for Mint/Debian
+package ownership; schedules and manual update requests must not create a second
+FreshClam. A scan uses its loaded databases to completion; updated `clamd` reloads
+databases through its standard mechanism.
 
-## Данные и карантин
+## Data and quarantine
 
-- `$XDG_STATE_HOME/clamui/history.sqlite3`: задания, находки, ошибки, журнал операций.
-- `$XDG_DATA_HOME/clamui/quarantine/`: содержимое карантина с непрозрачными UUID-именами.
-- `$XDG_CONFIG_HOME/clamui/config.toml`: предпочтения, исключения, параметры проверок.
-  Версионированная схема; атомарная запись через временный файл. При отсутствии
-  XDG-переменных используются стандартные каталоги внутри HOME.
-- Каталоги приватны для пользователя (0700), файлы истории и карантина — 0600.
-- SQLite использует миграции схемы; сроки хранения истории настраиваются.
+- `$XDG_STATE_HOME/clamui/history.sqlite3`: jobs, findings, errors, operation log.
+- `$XDG_DATA_HOME/clamui/quarantine/`: quarantined content with opaque UUID names.
+- `$XDG_CONFIG_HOME/clamui/config.toml`: preferences, exclusions, scan options.
+  Use a versioned schema and atomic temp-file writes. Missing XDG variables fall
+  back to standard directories under HOME.
+- User-private directories use mode 0700; history and quarantine files use 0600.
+- SQLite uses schema migrations; history retention is configurable.
 
-Карантин включается только по явному действию пользователя. Перед перемещением
-повторно проверяются тип файла и его идентичность; symlink не разыменовывается.
-Изменившийся после проверки файл требует повторной проверки. Для архивов операция
-относится к внешнему архиву, а не к виртуальному пути заражённого элемента.
+Quarantine requires an explicit user action. Recheck file type and identity before
+moving; never follow symlinks. A file changed after scanning must be rescanned. For
+archives, the operation applies to the outer archive, not a virtual path inside it.
 
-Операции имеют журнал `pending → stored → source_removed → committed`:
-для разных файловых систем сначала создаётся эксклюзивная копия в карантине,
-проверяется хеш, синхронизируются данные, затем повторно проверяется исходник и
-выполняется удаление. Если идентичность или безопасность операции нельзя подтвердить,
-исходник остаётся на месте и операция отмечается неполной. БД и файловая система
-не образуют общую транзакцию; при запуске выполняется восстановление по журналу.
+Operations use the journal `pending → stored → source_removed → committed`. Across
+filesystems, first create an exclusive quarantine copy, verify its hash, sync it,
+recheck the source, then remove it. If identity or safety cannot be verified, leave
+the source in place and mark the operation incomplete. A database and filesystem
+cannot share one transaction, so startup recovery uses the journal.
 
-При восстановлении проверяются каталог назначения и конфликт имён; существующий
-файл не перезаписывается, права исполнения автоматически не возвращаются.
-Постоянное удаление требует отдельного подтверждения.
-Hard links и уже открытые дескрипторы могут оставлять содержимое доступным:
-карантин не является песочницей и не гарантирует обезвреживание всех копий.
-Работа с активно изменяемыми или чужими каталогами исключена из безопасного MVP-карантина.
+On restore, check the destination directory and filename conflicts; never overwrite
+an existing file or automatically restore execute permission. Permanent deletion
+needs a separate confirmation. Hard links and already-open descriptors may leave
+content accessible: quarantine is not a sandbox and cannot neutralize every copy.
+The safe MVP excludes actively changing or untrusted directories.
 
-## Структура проекта
+## Project structure
 
 ```text
 src/clamui/
   __main__.py
-  bootstrap.py              # сборка зависимостей
-  domain/                   # модели и правила, без Textual и subprocess
-  application/              # сценарии, очередь заданий, координация
+  bootstrap.py              # dependency wiring
+  domain/                   # models and rules, no Textual or subprocess
+  application/              # use cases, job queue, coordination
   ports/                    # ScanEngine, HistoryRepository, QuarantineStore, UpdateBackend
   infrastructure/
-    engines/                # clamscan, позднее clamd
-    persistence/            # SQLite и миграции
-    quarantine/             # файловые операции и восстановление
-    config/                 # TOML, XDG, валидация
-    updates/                # FreshclamConfigAdapter, системный backend, профили
-    system/                 # состояние баз, блокировка экземпляра
-  tui/                      # Textual app, экраны, виджеты, TCSS
-  cli/                      # argparse, текстовый и JSON-вывод
-system-helper/              # D-Bus API, polkit policy, системная транзакция
-data/                       # пример конфигурации, необязательный .desktop
-po/                         # переводы gettext
-packaging/debian/           # сборка .deb
-tests/                      # unit, интеграционные и сценарии отказов
+    engines/                # clamscan, later clamd
+    persistence/            # SQLite and migrations
+    quarantine/             # file operations and recovery
+    config/                 # TOML, XDG, validation
+    updates/                # FreshclamConfigAdapter, system backend, profiles
+    system/                 # database status, instance lock
+  tui/                      # Textual app, screens, widgets, TCSS
+  cli/                      # argparse, text and JSON output
+system-helper/              # D-Bus API, polkit policy, system transaction
+data/                       # example configuration, optional .desktop entry
+po/                         # gettext translations
+packaging/debian/           # .deb build
+tests/                      # unit, integration, failure scenarios
 docs/architecture.md
 ```
 
-Внутренние слои определяют интерфейсы, инфраструктура их реализует.
-UI вызывает application, но не subprocess, SQL или файловые операции карантина.
-Bootstrap связывает реализации; тесты подставляют fake engine и временное хранилище.
+Inner layers define interfaces; infrastructure implements them. UI calls
+application code, not subprocess, SQL, or quarantine file operations. Bootstrap
+wires implementations; tests substitute a fake engine and temporary storage.
 
-## Интеграция с Mint
+## Mint integration
 
-Основной запуск — команда `clamui`. Необязательный desktop entry с `Terminal=true`
-открывает меню из списка приложений. Зависимости .deb: Python, проверенная версия
-Textual с зависимостями и clamscan из пакета clamav; freshclam рекомендуется,
-clamd опционален. Если подходящего Textual нет в целевых репозиториях, пакет включает
-частное окружение приложения с зафиксированными зависимостями, без изменения
-системного Python и без скачивания через pip при запуске или установке .deb.
-Nemo и desktop notifications — необязательная интеграция следующего этапа.
+The primary launch command is `clamui`. An optional desktop entry with
+`Terminal=true` opens the menu from the application list. `.deb` dependencies:
+Python, a tested Textual version and its dependencies, and `clamscan` from the
+`clamav` package; FreshClam is recommended and clamd is optional. If the target
+repositories do not provide a suitable Textual version, the package bundles a
+private application environment with pinned dependencies. It must not modify
+system Python or download packages through pip during launch or `.deb` installation.
+Nemo and desktop notifications are optional later-stage integrations.
 
-## Этапы и критерии готовности
+## Stages and acceptance criteria
 
-1. Вертикальный MVP: ядро и CLI scan/status, меню Textual, выбор путей, clamscan, отмена, находки/ошибки,
-   состояние баз, история SQLite, .deb.
-2. Карантин: журнал файловых операций, восстановление после сбоя, конфликт имён,
-   проверки изменившихся файлов; затем интеграция Nemo и уведомления.
-3. Управление обновлениями: профили зеркал, private_only, предварительный просмотр,
-   системный helper/polkit, запрос обновления, журнал и восстановление после сбоя.
-4. Опциональные возможности: clamd, планирование через systemd --user timer и
-   существующий CLI entrypoint.
-   Планирование проектируется с защитой от пересечения заданий TUI и таймера.
-   On-access protection требует отдельного решения и не подразумевается этапом 4.
+1. Vertical MVP: core and CLI scan/status, Textual menu, path selection, clamscan,
+   cancellation, findings/errors, database status, SQLite history, `.deb`.
+2. Quarantine: file-operation journal, crash recovery, name conflicts, changed-file
+   checks; then Nemo integration and notifications.
+3. Update management: mirror profiles, `private_only`, preview, system
+   helper/polkit, update request, log, recovery.
+4. Optional features: clamd, scheduling through a systemd `--user` timer, and the
+   existing CLI entry point. Scheduling must prevent overlap with TUI/timer jobs.
+   On-access protection needs a separate design and is not implied by stage 4.
 
-Проверка качества: fake engine для автомата состояний, реальные интеграционные
-проверки с безопасным тестовым файлом EICAR, недоступными путями, необычными именами,
-повреждёнными/отсутствующими базами, отменой и падением процесса. Для карантина —
-другая файловая система, нехватка места, подмена файла и сбой между стадиями журнала.
-Проверка .deb в чистой VM Mint и ручной UI smoke test; русская/английская локаль,
-светлый/тёмный терминал, управление клавиатурой, resize и 80×24, SSH/tmux,
-Ctrl+C/SIGHUP, восстановление терминала, входные ANSI/OSC-последовательности.
-CLI: проверка без TTY, stdout/stderr, JSON, коды завершения и конфликт экземпляров.
+Quality checks: fake engine state-machine tests; safe EICAR integration test; denied
+paths, unusual names, corrupt/missing databases, cancellation, and process failure.
+Quarantine tests cover a second filesystem, no space, file replacement, and crashes
+between journal states. Test `.deb` in a clean Mint VM and run a manual UI smoke test
+with English/Russian locales, light/dark terminals, keyboard controls, resize at
+80×24, SSH/tmux, Ctrl+C/SIGHUP, terminal restoration, and input ANSI/OSC strings.
+CLI tests cover no-TTY mode, stdout/stderr, JSON, exit codes, and instance conflicts.
 
-Дополнительные проверки обновлений: отказ polkit; пустой private_only; несколько зеркал;
-битый URL; отказ TLS; повреждённая подпись; недоступность всех зеркал; отсутствие
-официальных HTTP/DNS fallback; редиректы; параллельные пользователи; внешний edit;
-сбой после остановки/записи/старта службы; отсутствие возврата к официальному режиму
-при rollback. Интеграционные тесты в VM с контролируемыми DNS/HTTP и захватом трафика.
-Синтаксис и поведение сверяются с freshclam из целевой Mint, а не только upstream main.
+Additional update tests cover polkit denial; empty `private_only`; multiple mirrors;
+invalid URLs; TLS failure; invalid signatures; all mirrors unavailable; no official
+HTTP/DNS fallback; redirects; concurrent users; external edits; failure after
+service stop/config write/service start; and no return to official mode during
+rollback. Use a VM with controlled DNS/HTTP and traffic capture. Check syntax and
+behavior against the target Mint FreshClam, not only upstream main.
 
-Полное дерево экранов и действий: [menu.md](menu.md).
+Full screen and action tree: [menu.md](menu.md).
 
-## Первичные источники
+## Primary sources
 
-- Textual: фоновая работа и доставка событий в UI:
-  https://textual.textualize.io/guide/workers/
-- Textual: дерево файлов и каталогов:
-  https://textual.textualize.io/widgets/directory_tree/
-
-- ClamAV: способы сканирования, процессы, протокол демона и ограничения:
+- Textual background work and UI events: https://textual.textualize.io/guide/workers/
+- Textual directory tree: https://textual.textualize.io/widgets/directory_tree/
+- ClamAV scanning methods, processes, daemon protocol, and limits:
   https://docs.clamav.net/manual/Usage/Scanning.html
-- ClamAV: частные зеркала:
-  https://docs.clamav.net/appendix/CvdPrivateMirror.html
-- Каталог зеркал ClamUI (Microsoft, TrueNetwork, clamav-mirror.ru и официальный CDN):
+- ClamAV private mirrors: https://docs.clamav.net/appendix/CvdPrivateMirror.html
+- ClamUI mirror catalog (Microsoft, TrueNetwork, clamav-mirror.ru, official CDN):
   [docs/mirrors.md](mirrors.md)
-- ClamAV: семантика PrivateMirror в конфигурации:
+- ClamAV `PrivateMirror` semantics:
   https://github.com/Cisco-Talos/clamav/blob/main/etc/freshclam.conf.sample
-- ClamAV: конфигурация clamd и freshclam:
+- ClamAV clamd and FreshClam configuration:
   https://docs.clamav.net/manual/Usage/Configuration.html
-- ClamAV: установка пакетов и начальная настройка:
+- ClamAV package installation and initial setup:
   https://docs.clamav.net/manual/Installing/Packages.html
-- Linux Mint: руководство разработчика:
-  https://linuxmint-developer-guide.readthedocs.io/
+- Linux Mint Developer Guide: https://linuxmint-developer-guide.readthedocs.io/
 
-Стек, границы модулей и этапы выше — проектные рекомендации, а не требования этих источников.
+The stack, module boundaries, and stages above are project recommendations, not
+requirements imposed by these sources.

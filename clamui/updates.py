@@ -41,7 +41,7 @@ class Updater:
         config.validate()
         command = self.executable or shutil.which("freshclam")
         if not command:
-            raise ValueError("freshclam не найден. Установите пакет clamav-freshclam")
+            raise ValueError("freshclam не найден. Установите пакет ClamAV для вашей системы")
         if not self.store.activity.acquire(blocking=False):
             raise ValueError("Дождитесь окончания проверки или обновления")
         try:

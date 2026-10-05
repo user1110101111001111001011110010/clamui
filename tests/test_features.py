@@ -1,4 +1,5 @@
 from pathlib import Path
+import curses
 import io
 import tempfile
 import time
@@ -8,6 +9,7 @@ from unittest.mock import patch
 
 from clamui.core import Config, Scanner, Store
 from clamui.paths import FileBrowser, complete_path
+from clamui.package_managers import PackageManager
 from clamui.tui import TerminalUI
 from clamui.updates import Updater
 
@@ -59,7 +61,7 @@ class FeatureTests(unittest.TestCase):
         self.assertEqual(ui.page, "scan")
 
     def test_declining_engine_install_exits_clamui(self):
-        missing = [("clamscan", "clamav"), ("freshclam", "clamav-freshclam")]
+        missing = ["clamscan", "freshclam"]
         with patch("clamui.tui.missing_clamav_tools", return_value=missing):
             ui = TerminalUI(None, self.store, Config())
             self.assertEqual(ui.page, "engine_missing")
@@ -67,8 +69,8 @@ class FeatureTests(unittest.TestCase):
             ui.activate("exit")
             self.assertTrue(ui.exit_requested)
 
-    def test_failed_apt_install_reports_exit_code_and_missing_tools(self):
-        missing = [("clamscan", "clamav"), ("freshclam", "clamav-freshclam")]
+    def test_failed_package_install_reports_exit_code_and_missing_tools(self):
+        missing = ["clamscan", "freshclam"]
 
         class Screen:
             def clear(self):
@@ -79,7 +81,7 @@ class FeatureTests(unittest.TestCase):
 
             def get_wch(self):
                 time.sleep(.01)
-                raise __import__("curses").error
+                raise curses.error
 
             def getmaxyx(self):
                 return 24, 80
@@ -93,7 +95,11 @@ class FeatureTests(unittest.TestCase):
             def wait(self):
                 return 100
 
+        manager = PackageManager("apt", "APT", "/usr/bin/apt-get", ("install", "-y"),
+                                 ("clamav", "clamav-freshclam"))
         with (patch("clamui.tui.missing_clamav_tools", return_value=missing),
+              patch("clamui.tui.detect_package_manager", return_value=manager),
+              patch("clamui.tui.os.geteuid", return_value=1000),
               patch("clamui.tui.shutil.which", side_effect=lambda name: "/usr/bin/" + name),
               patch("clamui.tui.curses.def_prog_mode"),
               patch("clamui.tui.curses.endwin"),
@@ -109,6 +115,7 @@ class FeatureTests(unittest.TestCase):
         self.assertIn("кодом 100", ui.notice)
         self.assertIn("E: Не хватает места на устройстве", ui.install_output)
         self.assertIn("-y", popen.call_args.args[0])
+        self.assertIn("/usr/bin/apt-get", popen.call_args.args[0])
         self.assertNotIn("start_new_session", popen.call_args.kwargs)
 
     def test_tab_completes_spaces_and_cycles_ambiguous_matches(self):

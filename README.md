@@ -1,142 +1,150 @@
 # ClamUI
 
-Терминальная оболочка ClamAV для Linux Mint. Python 3.11+, без внешних
-Python-зависимостей. Для проверки нужен `clamscan`, для обновления — `freshclam`
-(пакеты `clamav` и `clamav-freshclam`).
+A terminal interface for ClamAV on Linux and compatible Unix systems. It requires
+Python 3.11+ and has no third-party Python dependencies. Scanning requires
+`clamscan`; database updates require `freshclam`.
 
-При запуске TUI ClamUI проверяет наличие `clamscan` и `freshclam`. Если одна из
-команд не найдена, можно сразу выбрать установку соответствующих пакетов
-(`clamav` и/или `clamav-freshclam`); ClamUI откроет `sudo apt-get install` в этом
-же терминале, где apt попросит подтвердить установку.
+ClamUI checks for both executables at startup. If either is missing, it can install
+ClamAV through a detected package manager: APT, DNF/YUM, Zypper, Pacman, APK,
+FreeBSD `pkg`, `pkgin`, OpenBSD `pkg_add`, or Gentoo Portage. RPM-based systems use
+DNF/YUM or Zypper; `rpm` itself does not resolve repository dependencies. The
+installer output and errors appear in the ClamUI window. Installation requires
+administrator privileges; ClamUI requests them through `sudo` or can be run as root.
 
-## Запуск
+## Run
 
 ```sh
 python3 main.py
 ```
 
-Запускайте в обычном терминале или Terminal в PyCharm. Также работает
-`python3 -m clamui`. В нетерминальном Run показывается справка.
-Рекомендуемый размер — 80×24, минимальный — 70×20; UTF-8 locale.
+Run ClamUI in a regular terminal or the PyCharm terminal. `python3 -m clamui` also
+works. A non-terminal Run prints help. Recommended terminal size is 80×24; minimum
+size is 70×20. Use a UTF-8 locale.
 
-## Меню
+## Menu
 
 ```text
 ClamUI
-├── Проверка
-│   ├── Выбрать файл или папку → файловый список
-│   ├── Путь → ручной ввод с Tab
-│   ├── Вложенные папки: да / нет
-│   ├── Начать / отменить
-│   ├── Краткий список файлов → прокрутка в нижней части экрана
-│   └── Подробный журнал ClamAV
-├── Обновить базы
-│   ├── Начать / отменить обновление
-│   ├── Журнал обновления
-│   └── Настроить зеркала
-├── История → проверка → результат
-├── Базы и зеркала
-│   ├── Режим: официальные / только свои
-│   ├── Известные зеркала → Microsoft / TrueNetwork / clamav-mirror.ru / официальный
-│   ├── Основное / резервное зеркало
-│   ├── Предпросмотр источников freshclam
-│   ├── Сохранить источники
-│   └── Сохранить и обновить базы
-├── Настройки
-│   ├── Вложенные папки / цвет
-│   ├── Максимальный размер файла: 100 МиБ (изменяемый)
-│   └── Максимальный объём сканирования: 400 МиБ (изменяемый)
-├── Справка
-└── Выход
+├── Scan
+│   ├── Select a file or folder → file browser
+│   ├── Path → type a path with Tab completion
+│   ├── Recursive directories: on / off
+│   ├── Start / stop
+│   ├── Short findings list → scroll at the bottom of the screen
+│   └── Full ClamAV log
+├── Update databases
+│   ├── Start / cancel update
+│   ├── Update log
+│   └── Configure mirrors
+├── History → scan → result
+├── Databases and mirrors
+│   ├── Mode: official / private mirrors only
+│   ├── Known mirrors → Microsoft / TrueNetwork / clamav-mirror.ru / official
+│   ├── Primary / backup mirror
+│   ├── Preview freshclam sources
+│   ├── Save sources
+│   └── Save and update databases
+├── Settings
+│   ├── Recursive directories / color
+│   ├── Interface language: English / Russian
+│   ├── Maximum file size: 100 MiB (editable)
+│   └── Maximum scan size: 400 MiB (editable)
+├── Help
+├── GitHub · clamui → open project page / copy URL if unavailable
+└── Exit
 ```
 
-↑↓ или j/k — выбор меню, Enter — открыть, Esc — назад, F1 — справка.
-На экране проверки F5 запускает сканирование, F6 открывает подтверждение остановки.
-Остановка через пункт меню также требует подтверждения.
-На экране проверки PgUp/PgDn прокручивают краткий список внизу, не двигая заголовок,
-счётчики и меню. В нём отображаются только файлы с обнаруженными угрозами,
-аналогично `clamscan -i`. Подробный журнал ClamAV показывает все строки результатов,
-включая чистые файлы и полные пути.
-Переход между экранами не отменяет работу.
+Use ↑↓ or j/k to select, Enter to open, Esc to go back, and F1 for help. On the
+scan screen, F5 starts a scan and F6 requests a stop confirmation. Stopping from
+the menu also requires confirmation. PgUp/PgDn scroll the short findings list at
+the bottom without moving the heading, counters, or menu. This list shows only
+detections, like `clamscan -i`. The full log includes clean-file results and full
+paths. Moving between screens does not cancel a running operation.
 
-## Удобный выбор пути
+## Language
 
-В файловом списке:
+The interface defaults to English. Open **Settings → Interface language** to switch
+between English and Russian. The choice is saved in ClamUI's TOML configuration.
+Russian documentation is available in [README.ru.md](README.ru.md); Russian design
+documents are provided alongside their English versions in `docs/`.
 
-- Enter открывает папку или выбирает файл.
-- Space выбирает выделенную папку или файл без перехода внутрь.
-- F2 или «Выбрать эту папку» выбирает текущий каталог.
-- Backspace или `..` поднимает на уровень выше; `.` показывает скрытые файлы.
+## Choosing paths
 
-В ручном вводе Tab дополняет путь. Если вариантов несколько, первый Tab дополняет
-общую часть, следующие перебирают варианты. Поддерживаются пробелы и `~/`, без shell.
-Ctrl+U очищает поле, ←→ перемещают курсор, Esc отменяет ввод.
+In the file browser:
 
-## Процент проверки
+- Enter opens a directory or selects a file.
+- Space selects the highlighted file or directory without entering it.
+- F2 or **Select this folder** selects the current directory.
+- Backspace or `..` goes up one level; `.` shows hidden files.
 
-Перед запуском составляется фиксированный список обычных файлов. Затем один
-процесс clamscan загружает базы и обрабатывает этот список. Процент равен
-`полученные результаты / количество файлов в списке × 100` с округлением вниз.
-Начало сканирования файла и повторная строка обнаружения не увеличивают счётчик.
-Загрузка баз и составление списка — отдельные фазы.
+In the path editor, Tab completes a path. If there are multiple matches, the first
+Tab completes the common prefix and later presses cycle through matches. Spaces and
+`~/` are supported; no shell is used. Ctrl+U clears the field, ←→ move the cursor,
+and Esc cancels editing.
 
-Это процент **обработанных файлов**, не байтов и не оставшегося времени. Обработка
-большого архива может надолго оставить значение неизменным. Ошибки и пропуски
-показаны отдельно: 100% не означает отсутствия ошибок или полного анализа всех
-элементов архивов. Неизвестный/неполученный результат не засчитывается; процент
-не доводится до 100 искусственно. Пустая папка показывает «Нет файлов для проверки».
+## Scan progress and limits
 
-Новые файлы после составления списка в задание не добавляются. Это список путей,
-а не файловый снимок: содержимое файлов может изменяться. Symlink, специальные
-файлы и переходы на другие файловые системы исключены. Имена с переводами строк
-и не-UTF-8 именами пропускаются с ошибкой, поскольку file-list не может надёжно
-передать их и сопоставить результат. Файлы не удаляются и не перемещаются.
+ClamUI creates a fixed list of regular files before scanning. One `clamscan` process
+loads the databases and scans that list. Progress is
+`received results / initial file count × 100`, rounded down. Starting a file and
+duplicate detection lines do not increment the count. Database loading and file
+inventory are separate phases.
 
-В «Настройки» можно задать максимальный размер отдельного файла
-(`--max-filesize`, по умолчанию 100 МиБ, диапазон 1–2048) и максимальный объём
-сканирования (`--max-scansize`, по умолчанию 400 МиБ, диапазон 1–4096).
-Значения сохраняются в TOML и передаются clamscan в МиБ. Большой файл или архив
-за установленным пределом может быть пропущен ClamAV; предел сканирования
-учитывает содержимое архивов и контейнеров. `--alert-exceeds-max=yes` просит
-ClamAV сообщать о таких превышениях в результате.
+Progress measures **files processed**, not bytes or time remaining. A large archive
+can keep the value unchanged for a while. Errors and skipped files are shown
+separately: 100% does not mean there were no errors or that every archive item was
+fully analyzed. Missing results are not counted and progress is never artificially
+raised to 100%. An empty directory displays “No files to scan”.
 
-## Обновление и зеркала
+Files added after inventory are not included. The inventory records paths, not a
+snapshot of file contents; files may change during the scan. Symlinks, special
+files, and traversal onto other filesystems are excluded. Names containing newlines
+or non-UTF-8 bytes are skipped because a file list cannot reliably pass and match
+them. ClamUI does not delete or move scanned files.
 
-«Обновить базы → Начать обновление» запускает настоящий freshclam от текущего
-пользователя. Базы сохраняются в `$XDG_DATA_HOME/clamui` (по умолчанию
-`~/.local/share/clamui`). Настройте зеркала в «Базы и зеркала» и сохраните их;
-«Сохранить и обновить» делает оба действия.
+Settings let you change the maximum individual file size (`--max-filesize`, default
+100 MiB, range 1–2048) and maximum scan size (`--max-scansize`, default 400 MiB,
+range 1–4096). Values are stored in TOML and passed to ClamAV in MiB. Files or
+archives beyond these limits may be skipped. The scan-size limit includes archive
+and container contents. `--alert-exceeds-max=yes` asks ClamAV to report limit
+exceeded results.
 
-Встроенный список и источники сверены в [каталоге зеркал](docs/mirrors.md).
-Публичность каталога не гарантирует его доступность из вашей сети. TrueNetwork
-и clamav-mirror.ru принадлежат одному оператору, поэтому это не независимая пара
-резервных серверов. Настроенный адрес можно выбрать основным или резервным.
+## Updates and mirrors
 
-- Режим «Только свои» использует PrivateMirror без официального fallback и
-  официальной DNS-проверки версии. Основной адрес обязателен, резервный необязателен.
-- Проверка подписей и `TestDatabases` остаются включёнными.
-- Загрузка идёт в отдельный каталог. Только успешный и полный набор баз становится
-  активным; ошибка или отмена сохраняет прежний набор. Интервалы повторов freshclam
-  сохраняются после неудачной попытки.
-- После первого успешного обновления сканирование явно использует локальные базы
-  ClamUI. До этого используются доступные системные базы. Выбранный источник
-  показывается в заголовке и записывается в результат проверки.
-- Проверка и обновление взаимно исключаются. На обновление нужна дополнительная
-  дисковая ёмкость для копии баз. Первый запуск скачивает полный набор.
+**Update databases → Start update** runs `freshclam` as the current user. Databases
+are stored in `$XDG_DATA_HOME/clamui` (default `~/.local/share/clamui`). Configure
+mirrors in **Databases and mirrors** and save them; **Save and update** does both.
 
-Пароль администратора не требуется. `/etc/clamav`, системный freshclam, clamd и
-другие приложения не изменяются и не переключаются на базы ClamUI.
-Временные конфиг и базы freshclam создаются в приватном каталоге под `/tmp`:
-AppArmor в Mint разрешает freshclam работать с этой директорией, а доступ к
-`~/.local/state/clamui` может быть запрещён системным профилем. После успешной
-проверки файлы баз копируются в `$XDG_DATA_HOME/clamui` и подключаются атомарно.
-Каталог `/tmp` должен иметь место примерно для ещё одной копии баз при обновлении.
-Включённый системный freshclam может независимо обращаться к своим источникам:
-режим зеркал ClamUI не является глобальной сетевой блокировкой ОС.
-Результат последнего обновления записывается в `last-update.json` рядом с историей.
+The built-in mirror list is documented in the [mirror catalog](docs/mirrors.md).
+A public catalog does not guarantee availability from your network. TrueNetwork
+and clamav-mirror.ru have the same operator, so they are not independent backup
+providers. A configured address can be assigned as the primary or backup mirror.
 
-Карантин, расписание, clamd, несколько выбранных целей и управление системной
-службой остаются следующими этапами.
+- **Private mirrors only** uses `PrivateMirror`, with no official fallback or
+  official DNS version check. A primary address is required; backup is optional.
+- Signature checks and `TestDatabases` remain enabled.
+- Downloads go to a separate directory. Only a complete successful set becomes
+  active; failure or cancellation preserves the previous set. FreshClam retry
+  intervals survive failed attempts.
+- After the first successful update, scans explicitly use ClamUI's local databases.
+  Before that, available system databases are used. The selected source appears in
+  the header and scan result.
+- Scanning and updating cannot run at the same time. Updates need extra disk space
+  for a copy of the databases. The first update downloads a full set.
+
+Database updates do not require administrator privileges. `/etc/clamav`, the system
+freshclam service, clamd, and other applications are not modified or switched to
+ClamUI's databases. Temporary freshclam configuration and databases are created in
+a private directory under `/tmp`: Mint's AppArmor profile allows freshclam to use
+this directory, while access to `~/.local/state/clamui` may be denied. After a
+successful verification, database files are copied into `$XDG_DATA_HOME/clamui` and
+activated atomically. `/tmp` needs room for roughly one extra copy of the databases
+during an update. A running system freshclam may still contact its own sources;
+ClamUI mirror settings are not a system-wide network block. The latest update
+result is stored in `last-update.json` beside the history database.
+
+Quarantine, scheduling, clamd support, multiple selected targets, and system
+service management are planned for later stages.
 
 ## CLI
 
@@ -149,27 +157,32 @@ python3 main.py --preview
 python3 main.py --data-dir /tmp/clamui-demo
 ```
 
-`--data-dir` изолирует настройки, историю и базы. Без него настройки находятся в
-`$XDG_CONFIG_HOME/clamui/config.toml`, история — в `$XDG_STATE_HOME/clamui/history.sqlite3`.
-Для отсутствующих XDG-переменных используются стандартные каталоги внутри HOME.
-История показывает последние 100 заданий; полный вывод ClamAV хранится для каждого.
-Подробные строки успешной проверки отдельных файлов заменяются счётчиками.
+`--data-dir` isolates settings, history, and databases. Otherwise, configuration
+is stored in `$XDG_CONFIG_HOME/clamui/config.toml` and history in
+`$XDG_STATE_HOME/clamui/history.sqlite3`. Missing XDG variables use standard
+directories under HOME. History shows the latest 100 jobs; full ClamAV output is
+stored for each. Detailed lines for successful individual files are replaced by
+counters.
 
-Коды сканирования: 0 — нет находок или нет файлов; 1 — находки/предупреждения;
-2 — ошибка или не все результаты получены; 130 — отмена. Для обновления:
-0 — успешное обновление, 2 — ошибка, 130 — отмена. При `--json` итоговый объект
-идёт в stdout, ошибки запуска — в stderr. `coverage: not_verified` не позволяет
-трактовать процент как гарантию полного антивирусного покрытия.
+Scan exit codes: 0 means no detections or no files; 1 means detections or warnings;
+2 means an error or incomplete results; 130 means cancelled. For updates, 0 means
+success, 2 means failure, and 130 means cancelled. With `--json`, the result object
+goes to stdout and launch errors go to stderr. `coverage: not_verified` means the
+progress percentage is not a guarantee of complete antivirus coverage.
 
-## Разработка
+## Development
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
 
-Модули: `core.py` — настройки, история, сканирование; `paths.py` — файловый список
-и дополнение; `updates.py` — локальные обновления; `process.py` — отменяемые процессы;
-`tui.py` — curses; `__main__.py` — CLI. Внешние тестовые процессы имитируют ошибки,
-отмену, неполный вывод и обновление. Тестовые базы не заменяют проверку настоящим ClamAV.
+Modules: `core.py` handles settings, history, and scanning; `paths.py` handles the
+file inventory and path completion; `package_managers.py` selects system installers;
+`updates.py` handles per-user updates; `process.py` handles cancellable processes;
+`tui.py` implements curses; `__main__.py` implements the CLI. Test processes emulate
+errors, cancellation, incomplete output, and updates. Fixture databases do not
+replace testing with a real ClamAV installation.
 
-Целевой план: [архитектура](docs/architecture.md), [полное меню](docs/menu.md).
+Design documents: [architecture](docs/architecture.md), [full menu](docs/menu.md).
+The Russian README and design documents are available in `README.ru.md` and
+`docs/*.ru.md`.

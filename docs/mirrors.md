@@ -1,28 +1,28 @@
-# Известные источники баз ClamAV
+# Known ClamAV database sources
 
-Каталог источников встроен в `clamui/mirrors.py`. Адреса добавлены для удобного
-выбора при ручном запуске обновления. Он не проверяет доступность сети в реальном
-времени. Дата сверки операторских страниц: 2026-10-05.
+The built-in source catalog is maintained in `clamui/mirrors.py`. It provides
+choices when starting a manual update and does not check network availability in
+real time. Operator pages were last checked on 2026-10-05.
 
-| Название | Адрес в каталоге | Режим ClamUI | Основание |
+| Name | Catalog address | ClamUI mode | Basis |
 |---|---|---|---|
-| Microsoft | `https://packages.microsoft.com/clamav` | `PrivateMirror` | [Каталог Microsoft](https://packages.microsoft.com/clamav/) перечисляет `main.cvd`, `daily.cvd`, `bytecode.cvd` и FILE_MANIFEST |
-| TrueNetwork, Россия | `https://mirror.truenetwork.ru/clamav` | `PrivateMirror` | [Страница зеркала](https://mirror.truenetwork.ru/clamav/) подтверждает ClamAV mirror и TrueNetwork как оператора |
-| clamav-mirror.ru, Россия | `https://clamav-mirror.ru` | `PrivateMirror` | [Страница оператора](https://clamav-mirror.ru/) публикует конфигурацию PrivateMirror и сообщает о ежечасном обновлении |
-| Официальный CDN ClamAV | `database.clamav.net` | Официальный режим | Рекомендуемый `DatabaseMirror` по [документации ClamAV](https://docs.clamav.net/manual/Usage/Configuration.html) |
+| Microsoft | `https://packages.microsoft.com/clamav` | `PrivateMirror` | [Microsoft catalog](https://packages.microsoft.com/clamav/) lists `main.cvd`, `daily.cvd`, `bytecode.cvd`, and FILE_MANIFEST |
+| TrueNetwork, Russia | `https://mirror.truenetwork.ru/clamav` | `PrivateMirror` | [Mirror page](https://mirror.truenetwork.ru/clamav/) identifies the ClamAV mirror and TrueNetwork as its operator |
+| clamav-mirror.ru, Russia | `https://clamav-mirror.ru` | `PrivateMirror` | [Operator page](https://clamav-mirror.ru/) publishes PrivateMirror configuration and reports hourly updates |
+| Official ClamAV CDN | `database.clamav.net` | Official mode | Recommended `DatabaseMirror` in the [ClamAV documentation](https://docs.clamav.net/manual/Usage/Configuration.html) |
 
-`mirror.truenetwork.ru` и `clamav-mirror.ru` обслуживаются TrueNetwork. Их можно
-использовать как разные адреса доступа, но это не два независимых оператора для
-резервирования. Microsoft — отдельный оператор. URL окончания `/` нормализуется
-ClamAV при разборе PrivateMirror; сам каталог хранит адреса без завершающей косой.
+`mirror.truenetwork.ru` and `clamav-mirror.ru` are operated by TrueNetwork. They
+provide different access addresses, but are not independent operators for backup
+purposes. Microsoft is a separate operator. ClamAV normalizes a trailing `/` when
+parsing `PrivateMirror`; the catalog stores addresses without a trailing slash.
 
-Официальный CDN выбирает распределённую инфраструктуру ClamAV; он не считается
-сторонним частным зеркалом. Выбор официального CDN включает официальный режим и
-штатную DNS-проверку. Режим `private_only` не имеет скрытого возврата на него.
+The official CDN selects ClamAV's distributed infrastructure; it is not a third-party
+private mirror. Choosing it enables official mode and the standard DNS check.
+`private_only` never falls back to the official CDN.
 
-Freshclam загружает подписанные базы, а приложение сохраняет `TestDatabases yes`.
-Наличие публичного каталога не гарантирует, что сервер доступен из конкретной сети,
-актуален или корректно обслуживает будущие запросы. При ошибке freshclam сообщает
-об источнике и сохраняет ранее активные базы. Кнопка «Проверить зеркало» пока не
-проводит отдельный сетевой тест; фактическая проверка доступности происходит при
-нажатии «Обновить базы».
+FreshClam downloads signed databases, and ClamUI keeps `TestDatabases yes` enabled.
+A public catalog does not guarantee that a server is reachable from a particular
+network, current, or able to serve future requests correctly. On failure, FreshClam
+reports the source and ClamUI keeps the previously active databases. The **Check
+mirror** action does not perform a separate network test yet; availability is tested
+when **Update databases** runs.

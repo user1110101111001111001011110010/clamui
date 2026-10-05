@@ -31,6 +31,7 @@ def safe_text(value: object) -> str:
 
 @dataclass
 class Config:
+    language: str = "en"
     mode: str = "official"
     primary: str = ""
     backup: str = ""
@@ -40,6 +41,8 @@ class Config:
     max_scansize_mib: int = 400
 
     def validate(self) -> None:
+        if self.language not in {"en", "ru"}:
+            raise ValueError("Неизвестный язык интерфейса")
         if type(self.max_filesize_mib) is not int or not 1 <= self.max_filesize_mib <= 2048:
             raise ValueError("Максимальный размер файла должен быть от 1 до 2048 МиБ")
         if type(self.max_scansize_mib) is not int or not 1 <= self.max_scansize_mib <= 4096:
@@ -189,13 +192,12 @@ STATUS = {"empty": "Нет файлов для проверки", "running": "П
           "found": "Обнаружены угрозы или предупреждения ClamAV", "failed": "Ошибка: проверка неполная",
           "cancelled": "Проверка отменена", "interrupted": "Проверка прервана"}
 
-CLAMAV_EXECUTABLE_PACKAGES = {"clamscan": "clamav", "freshclam": "clamav-freshclam"}
+CLAMAV_EXECUTABLES = ("clamscan", "freshclam")
 
 
 def missing_clamav_tools():
-    """Return missing runtime ClamAV executables and their Mint package names."""
-    return [(executable, package) for executable, package in CLAMAV_EXECUTABLE_PACKAGES.items()
-            if not shutil.which(executable)]
+    """Return missing runtime ClamAV executables; package names vary by distro."""
+    return [executable for executable in CLAMAV_EXECUTABLES if not shutil.which(executable)]
 
 
 def engine_status(database=None) -> str:

@@ -12,12 +12,17 @@ import threading
 import sqlite3
 import time
 import unicodedata
+import webbrowser
 
 from .core import (Config, Scanner, STATUS, Store, engine_status,
                    missing_clamav_tools, safe_text)
+from .i18n import english
 from .paths import FileBrowser, complete_path
+from .package_managers import PACKAGE_MANAGERS, detect_package_manager, manual_install_command
 from .updates import Updater
 from .mirrors import MIRRORS, VERIFIED_DATE
+
+PROJECT_URL = "https://github.com/user1110101111001111001011110010/clamui.git"
 
 
 def clipped(text: str, width: int) -> str:
@@ -67,6 +72,39 @@ class TerminalUI:
         except (OSError, ValueError) as exc:
             self.engine = safe_text(exc)
 
+    def open_project_link(self):
+        """Open the project page, copying its URL when no browser can be launched."""
+        try:
+            opened = webbrowser.open(PROJECT_URL, new=2)
+        except (OSError, webbrowser.Error):
+            opened = False
+        if opened:
+            self.notice = ("Открыта страница ClamUI на GitHub."
+                           if self.config.language == "ru" else "Opened the ClamUI GitHub page.")
+            return
+        clipboard_commands = (
+            ("wl-copy", []),
+            ("xclip", ["-selection", "clipboard"]),
+            ("xsel", ["--clipboard", "--input"]),
+        )
+        for executable, args in clipboard_commands:
+            path = shutil.which(executable)
+            if not path:
+                continue
+            try:
+                result = subprocess.run([path, *args], input=PROJECT_URL, text=True,
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        timeout=3, check=False)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if result.returncode == 0:
+                self.notice = ("Браузер недоступен; ссылка GitHub скопирована в буфер обмена."
+                               if self.config.language == "ru"
+                               else "Browser unavailable; GitHub URL copied to clipboard.")
+                return
+        self.notice = ("Откройте ссылку GitHub: " if self.config.language == "ru"
+                       else "Open this GitHub URL: ") + PROJECT_URL
+
     def go(self, page):
         old_page = self.page
         self.page, self.selected, self.scroll, self.notice = page, 0, 0, ""
@@ -80,10 +118,12 @@ class TerminalUI:
         if self.page == "home":
             return [("Проверка", "scan"), ("Обновить базы", "updates"), ("История", "history"),
                     ("Базы и зеркала", "mirrors"), ("Настройки", "settings"),
-                    ("Справка", "help"), ("Выход", "exit")]
+                    ("Справка", "help"), ("GitHub · clamui", "github"), ("Выход", "exit")]
         if self.page == "engine_missing":
-            packages = sorted({package for _, package in missing_clamav_tools()})
-            return [("Установить пакеты: " + ", ".join(packages), "install_engine"),
+            manager = detect_package_manager()
+            label = ("Установить через " + manager.label + ": " + ", ".join(manager.packages)
+                     if manager else "Пакетный менеджер не распознан — установка вручную")
+            return [(label, "install_engine"),
                     ("Выйти из ClamUI", "exit")]
         if self.page == "scan":
             return [("Выбрать файл или папку…", "browse"),
@@ -122,6 +162,7 @@ class TerminalUI:
             return [("Вложенные папки по умолчанию: " + yes(self.config.recursive), "recursive"),
                     (f"Максимальный размер файла: {self.config.max_filesize_mib} МиБ", "max_filesize_mib"),
                     (f"Максимальный объём сканирования: {self.config.max_scansize_mib} МиБ", "max_scansize_mib"),
+                    ("Язык интерфейса: " + ("English" if self.config.language == "en" else "Русский"), "language"),
                     ("Цветной интерфейс: " + yes(self.config.color), "color"), ("Назад", "home")]
         if self.page == "history":
             return [(f"{r['started'][:16].replace('T', ' ')} UTC | {STATUS.get(r['status'], r['status'])} | {safe_text(r['path'])}",
@@ -131,6 +172,9 @@ class TerminalUI:
         return []
 
     def write(self, y, x, text, style=0):
+        text = str(text)
+        if self.config.language == "en":
+            text = english(text)
         height, width = self.win.getmaxyx()
         if y < 0 or y >= height or x >= width - 1:
             return
@@ -175,14 +219,15 @@ class TerminalUI:
             self.write(y, 4, "Выберите действие и нажмите Enter.", curses.A_DIM)
             self.write(y + 1, 4, "Локальное сканирование • без удаления файлов", curses.A_DIM)
         elif self.page == "engine_missing":
-            missing = ", ".join(executable for executable, _ in missing_clamav_tools())
+            missing = ", ".join(missing_clamav_tools())
             self.write(y, 2, "Не найдены обязательные исполняемые файлы: " + missing, accent)
-            self.write(y + 1, 2, "ClamUI использует clamscan для проверки, freshclam для обновления баз.")
-            self.write(y + 2, 2, "Установка идёт… вывод apt обновляется ниже." if self.installing else
-                       "Можно установить соответствующие пакеты сейчас. Потребуются права администратора.")
-            self.write(y + 3, 2, "PgUp/PgDn — прокрутка вывода установки.", curses.A_DIM)
+            self.write(y + 1, 2, "ClamAV is an open-source antivirus toolkit for detecting malicious software.")
+            self.write(y + 2, 2, "It includes a command-line scanner and FreshClam database updater.")
+            self.write(y + 3, 2, "Установка идёт… вывод пакетного менеджера обновляется ниже." if self.installing else
+                       "Для установки ClamAV потребуются права администратора.")
+            self.write(y + 4, 2, "PgUp/PgDn — прокрутка вывода установки.", curses.A_DIM)
             if self.install_output:
-                top, bottom = y + 5, h - 4
+                top, bottom = y + 6, h - 4
                 visible = max(0, bottom - top)
                 max_scroll = max(0, len(self.install_output) - visible)
                 self.scroll = max(0, min(self.scroll, max_scroll))
@@ -473,6 +518,14 @@ class TerminalUI:
             candidate = replace(self.config, **{action: not getattr(self.config, action)})
             self.store.save(candidate)
             self.config = candidate
+        elif action == "language":
+            candidate = replace(self.config, language="ru" if self.config.language == "en" else "en")
+            self.store.save(candidate)
+            self.config = candidate
+            self.notice = ("Язык интерфейса изменён на русский." if candidate.language == "ru"
+                           else "Interface language changed to English.")
+        elif action == "github":
+            self.open_project_link()
         elif action == "start":
             if not self.target.strip():
                 raise ValueError("Укажите путь")
@@ -519,15 +572,21 @@ class TerminalUI:
         self.install_output = []
         self.scroll = 0
         self.install_follow = True
-        packages = sorted({package for _, package in missing_clamav_tools()})
-        if not packages:
+        missing_tools = missing_clamav_tools()
+        if not missing_tools:
             self.go("home")
             self.notice = "Все обязательные исполняемые файлы ClamAV уже доступны."
             return
-        apt_get = shutil.which("apt-get")
-        sudo = shutil.which("sudo")
-        if not apt_get or not sudo:
-            self.notice = "Автоустановка недоступна. Выполните: sudo apt-get install " + " ".join(packages)
+        manager = detect_package_manager()
+        if manager is None:
+            supported = ", ".join(candidate.label for candidate in PACKAGE_MANAGERS)
+            self.notice = "Пакетный менеджер не распознан. Установите ClamAV вручную; поддерживаются: " + supported
+            return
+        is_root = os.geteuid() == 0
+        sudo = None if is_root else shutil.which("sudo")
+        if not is_root and not sudo:
+            command = manual_install_command(manager, sudo=False)
+            self.notice = "Автоустановка требует sudo; запустите эту команду от root: " + command
             return
         result = None
         failure = ""
@@ -535,7 +594,11 @@ class TerminalUI:
         try:
             curses.def_prog_mode()
             curses.endwin()
-            authorization = subprocess.run([sudo, "-v"], check=False)
+            if sudo:
+                authorization = subprocess.run([sudo, "-v"], check=False,
+                                               env={**os.environ, "LC_ALL": "C"})
+            else:
+                authorization = subprocess.CompletedProcess([], 0)
         except KeyboardInterrupt:
             failure = "Запрос прав sudo прервали с клавиатуры."
         except (OSError, subprocess.SubprocessError, curses.error) as exc:
@@ -551,14 +614,14 @@ class TerminalUI:
             failure = f"Не удалось получить права sudo (код {authorization.returncode})."
         if not failure:
             try:
-                result = self._run_installer(sudo, apt_get, packages)
+                result = self._run_installer(sudo, manager)
             except (OSError, subprocess.SubprocessError) as exc:
                 failure = "Не удалось запустить установщик: " + safe_text(exc)
         missing = missing_clamav_tools()
         if result is not None and result != 0:
             failure = f"Процесс установки завершился с кодом {result}."
         if missing:
-            names = ", ".join(executable for executable, _ in missing)
+            names = ", ".join(missing)
             detail = "После попытки установки всё ещё не найдены: " + names
             self.notice = (failure + " " + detail).strip()
             return
@@ -567,18 +630,24 @@ class TerminalUI:
         self.notice = ("Компоненты ClamAV установлены и доступны."
                        if not failure else "Исполняемые файлы доступны, но " + failure)
 
-    def _run_installer(self, sudo, apt_get, packages):
+    def _run_installer(self, sudo, manager):
         output_queue = queue.Queue()
         self.install_output = []
         self.scroll = 0
         self.install_follow = True
+        command = manager.command()
+        if sudo:
+            command = [sudo, "-n", *command]
+        env = {**os.environ, "LC_ALL": "C"}
+        if manager.key == "apt":
+            env["DEBIAN_FRONTEND"] = "noninteractive"
         process = subprocess.Popen(
-            [sudo, "-n", apt_get, "-y", "install", *packages],
+            command,
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             # Keep sudo attached to the same controlling TTY used by `sudo -v`.
             # A detached session can invalidate per-TTY sudo credentials.
             text=True, errors="replace", bufsize=1,
-            env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"})
+            env=env)
 
         def read_output():
             try:
@@ -615,7 +684,9 @@ class TerminalUI:
                 except curses.error:
                     key = None
                 if key in (curses.KEY_NPAGE, curses.KEY_PPAGE):
-                    page = max(1, self.win.getmaxyx()[0] - 15)
+                    height = self.win.getmaxyx()[0]
+                    y = 5 + min(len(self.menu()), min(8, height - 12)) + 1
+                    page = max(1, height - 4 - (y + 6))
                     self.scroll += page if key == curses.KEY_NPAGE else -page
                     max_scroll = max(0, len(self.install_output) - page)
                     self.scroll = max(0, min(self.scroll, max_scroll))
