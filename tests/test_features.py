@@ -159,6 +159,7 @@ class FeatureTests(unittest.TestCase):
         self.assertEqual(scanner.progress()["percent"], 33)
         scanner._result_line("/tmp/c: Test FOUND")
         scanner._result_line("/tmp/c: Test FOUND")
+        self.assertEqual(scanner.finding_paths_snapshot(), ["/tmp/c"])
         self.assertEqual(scanner.progress()["percent"], 66)
         scanner._result_line("/tmp/d: Access denied")
         progress = scanner.progress()

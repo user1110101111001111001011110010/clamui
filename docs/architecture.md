@@ -2,8 +2,12 @@
 
 Status: target architecture. The current prototype is reduced; see the
 [README](../README.md). It uses standard-library curses rather than Textual and a
-combined `core.py` module. System mirror management, quarantine, and later stages
-are not implemented. Prototype 0.2 includes file selection, path completion,
+combined `core.py` module. System mirror management and later stages
+are not implemented. Basic quarantine, restore, manual deletion, and an exact-path
+allowlist are implemented in the working tree. The staged operation journal and
+crash recovery described below remain planned; current restore returns saved
+permissions, including executable bits, and supports only the original path.
+Prototype 0.2 includes file selection, path completion,
 fixed-list progress, per-user FreshClam updates, and English/Russian UI strings.
 The system backend below is a separate future mode.
 

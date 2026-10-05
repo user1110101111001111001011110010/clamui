@@ -32,12 +32,15 @@ ClamUI
 │   ├── Recursive directories: on / off
 │   ├── Start / stop
 │   ├── Short findings list → scroll at the bottom of the screen
+│   ├── Detection actions → quarantine / delete / ignore on future scans
 │   └── Full ClamAV log
 ├── Update databases
 │   ├── Start / cancel update
 │   ├── Update log
 │   └── Configure mirrors
 ├── History → scan → result
+├── Quarantine → select file → confirm restore to original path
+├── Allowlist → remove paths to include them in future scans
 ├── Databases and mirrors
 │   ├── Mode: official / private mirrors only
 │   ├── Known mirrors → Microsoft / TrueNetwork / clamav-mirror.ru / official
@@ -60,7 +63,12 @@ scan screen, F5 starts a scan and F6 requests a stop confirmation. Stopping from
 the menu also requires confirmation. PgUp/PgDn scroll the short findings list at
 the bottom without moving the heading, counters, or menu. This list shows only
 detections, like `clamscan -i`. The full log includes clean-file results and full
-paths. Moving between screens does not cancel a running operation.
+paths. No action is taken automatically. After a scan, select **Detection actions**
+to choose an action for a finding: move it to the private quarantine, delete it, or
+skip that exact path in future scans. Each file action requires confirmation. Restore
+is available from **Quarantine** and refuses to overwrite an existing file. Manage
+allowlisted paths from **Allowlist** in the main menu. Moving between screens does
+not cancel a running operation.
 
 ## Language
 

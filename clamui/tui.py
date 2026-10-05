@@ -21,6 +21,7 @@ from .paths import FileBrowser, complete_path
 from .package_managers import PACKAGE_MANAGERS, detect_package_manager, manual_install_command
 from .updates import Updater
 from .mirrors import MIRRORS, VERIFIED_DATE
+from .quarantine import Quarantine
 
 PROJECT_URL = "https://github.com/user1110101111001111001011110010/clamui.git"
 
@@ -45,6 +46,7 @@ class TerminalUI:
         self.mirror_choice = MIRRORS[0]
         self.scanner = Scanner(store)
         self.updater = Updater(store)
+        self.quarantine = Quarantine(store)
         self.browser = FileBrowser()
         self.completions = None
         self.update_was_busy = False
@@ -60,6 +62,12 @@ class TerminalUI:
         self.engine = "Определяем версию ClamAV…"
         self.rows = []
         self.record = None
+        self.selected_detection = None
+        self.selected_detection_identity = None
+        self.quarantine_entries = []
+        self.selected_quarantine = None
+        self.ignored_paths = []
+        self.selected_ignored_path = None
         self.edit = None
         self.exit_requested = False
         self.previous = "home"
@@ -110,13 +118,24 @@ class TerminalUI:
         self.page, self.selected, self.scroll, self.notice = page, 0, 0, ""
         if page == "history":
             self.rows = self.store.history()
+        if page == "quarantine":
+            self.quarantine_entries = self.quarantine.entries()
+        if page == "ignore_list":
+            self.ignored_paths = self.store.ignored_paths()
         if page == "mirrors" and old_page not in {"preview", "mirror_catalog", "mirror_choice"}:
             self.draft = replace(self.config)
 
     def menu(self):
         yes = lambda value: "да" if value else "нет"
         if self.page == "home":
-            return [("Проверка", "scan"), ("Обновить базы", "updates"), ("История", "history"),
+            items = [("Проверка", "scan"), ("Обновить базы", "updates"), ("История", "history")]
+            count = len(self.quarantine.entries())
+            if count:
+                items.append((f"Карантин · {count}", "quarantine"))
+            ignored_count = len(self.store.ignored_paths())
+            if ignored_count:
+                items.append((f"Белый список · {ignored_count}", "ignore_list"))
+            return items + [
                     ("Базы и зеркала", "mirrors"), ("Настройки", "settings"),
                     ("Справка", "help"), ("GitHub · clamui", "github"), ("Выход", "exit")]
         if self.page == "engine_missing":
@@ -126,12 +145,42 @@ class TerminalUI:
             return [(label, "install_engine"),
                     ("Выйти из ClamUI", "exit")]
         if self.page == "scan":
-            return [("Выбрать файл или папку…", "browse"),
+            items = [("Выбрать файл или папку…", "browse"),
                     ("Путь: " + safe_text(self.target) + " [Tab]", "path"),
                     ("Вложенные папки: " + yes(self.config.recursive), "recursive"),
                     ("Остановить проверку…" if self.scanner.busy else "Начать проверку",
                      "cancel" if self.scanner.busy else "start"),
-                    ("Открыть подробный журнал", "live"), ("Назад", "home")]
+                    ]
+            detections = self.scanner.finding_paths_snapshot()
+            if detections and not self.scanner.busy:
+                items.append((f"Действия с находками · {len(detections)}", "detections"))
+            return items + [("Открыть подробный журнал", "live"), ("Назад", "home")]
+        if self.page == "detections":
+            return [(safe_text(path), f"detection:{index}")
+                    for index, path in enumerate(self.scanner.finding_paths_snapshot())] + [("Назад", "scan")]
+        if self.page == "detection_action":
+            return [("Переместить в карантин…", "quarantine_confirm"),
+                    ("Удалить файл…", "delete_confirm"),
+                    ("Игнорировать в следующих проверках…", "ignore_confirm"),
+                    ("Назад к находкам", "detections")]
+        if self.page == "quarantine":
+            return [(Path(entry.original).name + " · " + entry.original, f"quarantine:{index}")
+                    for index, entry in enumerate(self.quarantine_entries)] + [("Назад", "home")]
+        if self.page == "quarantine_item":
+            return [("Восстановить исходный файл…", "restore_confirm"), ("Назад к карантину", "quarantine")]
+        if self.page == "quarantine_confirm":
+            return [("Подтвердить перемещение в карантин", "confirm_quarantine"), ("Отмена", "detection_action")]
+        if self.page == "restore_confirm":
+            return [("Подтвердить восстановление", "confirm_restore"), ("Отмена", "quarantine_item")]
+        if self.page == "ignore_list":
+            return [(safe_text(path), f"ignored:{index}")
+                    for index, path in enumerate(self.ignored_paths)] + [("Назад", "home")]
+        if self.page == "ignore_remove_confirm":
+            return [("Убрать путь из белого списка", "confirm_unignore"), ("Отмена", "ignore_list")]
+        if self.page == "delete_confirm":
+            return [("Подтвердить удаление файла", "confirm_delete"), ("Отмена", "detection_action")]
+        if self.page == "ignore_confirm":
+            return [("Подтвердить добавление в белый список", "confirm_ignore"), ("Отмена", "detection_action")]
         if self.page == "scan_confirm":
             return [("Продолжить сканирование", "resume_scan"),
                     ("Подтвердить остановку", "confirm_scan_cancel")]
@@ -200,7 +249,12 @@ class TerminalUI:
                   "live": "Текущий результат", "exit": "Завершение работы",
                   "mirror_catalog": "Известные зеркала", "mirror_choice": "Выбор зеркала",
                   "browser": "Выбор файла или папки", "updates": "Обновление баз", "update_log": "Журнал обновления",
-                  "scan_confirm": "Подтверждение остановки", "engine_missing": "Движок не установлен"}
+                  "scan_confirm": "Подтверждение остановки", "engine_missing": "Движок не установлен",
+                  "detections": "Обнаруженные файлы", "detection_action": "Действие с файлом",
+                  "quarantine": "Карантин ClamUI", "quarantine_item": "Файл в карантине",
+                  "quarantine_confirm": "Подтверждение карантина", "restore_confirm": "Подтверждение восстановления",
+                  "delete_confirm": "Подтверждение удаления", "ignore_confirm": "Подтверждение белого списка",
+                  "ignore_list": "Белый список ClamUI", "ignore_remove_confirm": "Убрать путь из белого списка"}
         self.write(1, 2, "ClamUI", accent | curses.A_BOLD)
         self.write(1, 12, "/ " + titles.get(self.page, self.page))
         self.write(2, 2, "─" * (w - 5), accent)
@@ -217,7 +271,7 @@ class TerminalUI:
         y = 5 + min(len(items), min(8, h - 12)) + 1
         if self.page == "home":
             self.write(y, 4, "Выберите действие и нажмите Enter.", curses.A_DIM)
-            self.write(y + 1, 4, "Локальное сканирование • без удаления файлов", curses.A_DIM)
+            self.write(y + 1, 4, "Локальное сканирование • действия только вручную", curses.A_DIM)
         elif self.page == "engine_missing":
             missing = ", ".join(missing_clamav_tools())
             self.write(y, 2, "Не найдены обязательные исполняемые файлы: " + missing, accent)
@@ -295,6 +349,28 @@ class TerminalUI:
             self.write(y, 2, "Текущая операция будет остановлена; прежние базы сохранятся.")
         elif self.page == "scan_confirm":
             self.write(y, 2, "Остановить текущую проверку? Её неполный результат сохранится в истории.", accent)
+        elif self.page == "detection_action":
+            self.write(y, 2, "Выбранный файл: " + str(self.selected_detection), accent)
+            self.write(y + 1, 2, "Перемещение начнётся только после отдельного подтверждения.", curses.A_DIM)
+        elif self.page == "quarantine_confirm":
+            self.write(y, 2, "Файл будет удалён из исходного места и сохранён в карантине ClamUI:", accent)
+            self.write(y + 1, 2, str(self.selected_detection), curses.A_DIM)
+        elif self.page == "delete_confirm":
+            self.write(y, 2, "Файл будет удалён без возможности восстановления:", accent)
+            self.write(y + 1, 2, str(self.selected_detection), curses.A_DIM)
+        elif self.page == "ignore_confirm":
+            self.write(y, 2, "Этот точный путь будет пропускаться в следующих проверках:", accent)
+            self.write(y + 1, 2, str(self.selected_detection), curses.A_DIM)
+        elif self.page == "ignore_remove_confirm":
+            self.write(y, 2, "После удаления пути из белого списка файл будет проверяться снова:", accent)
+            self.write(y + 1, 2, str(self.selected_ignored_path), curses.A_DIM)
+        elif self.page == "quarantine_item" and self.selected_quarantine:
+            self.write(y, 2, "Исходный путь: " + self.selected_quarantine.original, accent)
+            self.write(y + 1, 2, "Восстановление не перезапишет существующий файл.", curses.A_DIM)
+        elif self.page == "restore_confirm" and self.selected_quarantine:
+            self.write(y, 2, "Восстановить файл по исходному пути?", accent)
+            self.write(y + 1, 2, self.selected_quarantine.original, curses.A_DIM)
+            self.write(y + 2, 2, "Если путь занят, операция завершится без перезаписи.", curses.A_DIM)
         elif self.page in {"help", "preview", "detail", "live", "update_log"}:
             lines = self.document()
             room = h - 10
@@ -348,7 +424,9 @@ class TerminalUI:
                     "Предпросмотр — фрагмент, не готовый системный конфиг.",
                     "Обновление идёт в пользовательский каталог без root.",
                     "Сканирование затем использует успешно обновлённые базы.",
-                    "Карантин и расписание появятся позже.", "",
+                    "Действия с находками доступны вручную: карантин, удаление или белый список.",
+                    "Карантин обратим; удаление требует подтверждения. Белый список хранит точный путь.",
+                    "",
                     "Настройки: " + str(self.store.config_path),
                     "История: " + str(self.store.db)]
         if self.page == "preview":
@@ -455,6 +533,17 @@ class TerminalUI:
         if self.page == "history" and action.isdigit():
             self.record = self.rows[int(action)]
             self.go("detail")
+        elif self.page == "detections" and action.startswith("detection:"):
+            paths = self.scanner.finding_paths_snapshot()
+            self.selected_detection = paths[int(action.split(":", 1)[1])]
+            self.selected_detection_identity = self.scanner.finding_identity(self.selected_detection)
+            self.go("detection_action")
+        elif self.page == "quarantine" and action.startswith("quarantine:"):
+            self.selected_quarantine = self.quarantine_entries[int(action.split(":", 1)[1])]
+            self.go("quarantine_item")
+        elif self.page == "ignore_list" and action.startswith("ignored:"):
+            self.selected_ignored_path = self.ignored_paths[int(action.split(":", 1)[1])]
+            self.go("ignore_remove_confirm")
         elif action == "browse":
             path = Path(self.target).expanduser()
             self.browser.open(path if path.is_dir() else path.parent)
@@ -526,6 +615,50 @@ class TerminalUI:
                            else "Interface language changed to English.")
         elif action == "github":
             self.open_project_link()
+        elif action == "confirm_quarantine":
+            if not self.selected_detection:
+                raise ValueError("Сначала выберите обнаруженный файл")
+            quarantined = self.quarantine.quarantine(self.selected_detection, self.selected_detection_identity)
+            self.scanner.remove_finding(self.selected_detection)
+            self.selected_detection = None
+            self.selected_detection_identity = None
+            self.go("scan")
+            self.notice = "Файл перемещён в карантин: " + quarantined.original
+        elif action == "confirm_delete":
+            if not self.selected_detection:
+                raise ValueError("Сначала выберите обнаруженный файл")
+            deleted = self.quarantine.delete(self.selected_detection, self.selected_detection_identity)
+            self.scanner.remove_finding(self.selected_detection)
+            self.selected_detection = None
+            self.selected_detection_identity = None
+            self.go("scan")
+            self.notice = "Файл удалён: " + str(deleted)
+        elif action == "confirm_ignore":
+            if not self.selected_detection:
+                raise ValueError("Сначала выберите обнаруженный файл")
+            self.quarantine.verify_detection(self.selected_detection, self.selected_detection_identity)
+            self.store.ignore_path(self.selected_detection)
+            ignored = self.selected_detection
+            self.scanner.remove_finding(ignored)
+            self.selected_detection = None
+            self.selected_detection_identity = None
+            self.go("scan")
+            self.notice = "Путь добавлен в белый список: " + ignored
+        elif action == "confirm_restore":
+            if not self.selected_quarantine:
+                raise ValueError("Сначала выберите файл в карантине")
+            restored = self.quarantine.restore(self.selected_quarantine.token)
+            self.selected_quarantine = None
+            self.go("quarantine")
+            self.notice = "Файл восстановлен: " + str(restored)
+        elif action == "confirm_unignore":
+            if not self.selected_ignored_path:
+                raise ValueError("Сначала выберите путь из белого списка")
+            removed = self.selected_ignored_path
+            self.store.unignore_path(removed)
+            self.selected_ignored_path = None
+            self.go("ignore_list")
+            self.notice = "Путь удалён из белого списка: " + removed
         elif action == "start":
             if not self.target.strip():
                 raise ValueError("Укажите путь")
@@ -769,7 +902,15 @@ class TerminalUI:
                         if self.page == "home" or self.win.getmaxyx()[0] < 20 or self.win.getmaxyx()[1] < 70:
                             self.activate("exit")
                         else:
-                            self.go({"preview": "mirrors", "detail": "history", "live": "scan", "scan_confirm": self.previous, "browser": "scan", "mirror_catalog": "mirrors", "mirror_choice": "mirror_catalog", "update_log": "updates", "exit": self.previous}.get(self.page, "home"))
+                            self.go({"preview": "mirrors", "detail": "history", "live": "scan",
+                                     "scan_confirm": self.previous, "browser": "scan", "mirror_catalog": "mirrors",
+                                     "mirror_choice": "mirror_catalog", "update_log": "updates", "exit": self.previous,
+                                     "detections": "scan", "detection_action": "detections",
+                                     "quarantine": "home", "quarantine_item": "quarantine",
+                                     "quarantine_confirm": "detection_action",
+                                     "restore_confirm": "quarantine_item", "delete_confirm": "detection_action",
+                                     "ignore_confirm": "detection_action", "ignore_list": "home",
+                                     "ignore_remove_confirm": "ignore_list"}.get(self.page, "home"))
                     elif key in (curses.KEY_DOWN, "j", "\t", curses.KEY_UP, "k", curses.KEY_BTAB):
                         delta = -1 if key in (curses.KEY_UP, "k", curses.KEY_BTAB) else 1
                         if self.menu():

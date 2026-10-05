@@ -38,6 +38,8 @@ ClamUI
 │   │   │   ├── Path, signature, file state
 │   │   │   ├── Scan again
 │   │   │   └── Quarantine → verify identity → confirm
+│   │   │       Delete → verify identity → confirm
+│   │   │       Ignore exact path in future scans → confirm
 │   │   ├── Errors, skipped files, and diagnostics
 │   │   └── Repeat scan → review options → start
 │   └── Clear history → choose period → confirm
@@ -48,6 +50,9 @@ ClamUI
 │   │   ├── Restore → original or other location → confirm
 │   │   └── Delete permanently → confirm
 │   └── Incomplete operations → details / retry safe restore
+├── Allowlist
+│   ├── Exact paths skipped by future scans
+│   └── Remove path → include in future scans
 ├── Databases and updates
 │   ├── Status
 │   │   ├── ClamAV and database versions, database date

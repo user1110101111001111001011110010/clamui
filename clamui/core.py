@@ -99,6 +99,7 @@ class Store:
         self._lock = None
         with self.connect() as db:
             db.execute("CREATE TABLE IF NOT EXISTS scans (id INTEGER PRIMARY KEY, started TEXT NOT NULL, path TEXT NOT NULL, status TEXT NOT NULL, code INTEGER, output TEXT NOT NULL DEFAULT '')")
+            db.execute("CREATE TABLE IF NOT EXISTS ignored_paths (path TEXT PRIMARY KEY, added TEXT NOT NULL)")
         self.db.chmod(0o600)
 
     def active_database(self):
@@ -187,6 +188,24 @@ class Store:
             db.row_factory = sqlite3.Row
             return [dict(row) for row in db.execute("SELECT * FROM scans ORDER BY id DESC LIMIT 100")]
 
+    @staticmethod
+    def normalize_path(path: str | Path) -> str:
+        return str(Path(path).expanduser().absolute())
+
+    def ignore_path(self, path: str | Path):
+        normalized = self.normalize_path(path)
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO ignored_paths(path, added) VALUES(?,?)",
+                       (normalized, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+
+    def unignore_path(self, path: str | Path):
+        with self.connect() as db:
+            db.execute("DELETE FROM ignored_paths WHERE path=?", (self.normalize_path(path),))
+
+    def ignored_paths(self) -> list[str]:
+        with self.connect() as db:
+            return [row[0] for row in db.execute("SELECT path FROM ignored_paths ORDER BY path")]
+
 
 STATUS = {"empty": "Нет файлов для проверки", "running": "Проверка идёт", "clean": "Угроз не обнаружено в проверенных файлах",
           "found": "Обнаружены угрозы или предупреждения ClamAV", "failed": "Ошибка: проверка неполная",
@@ -230,6 +249,8 @@ class Scanner:
         self.current = ""
         self.pending = set()
         self.finding_lines = []
+        self.finding_paths = []
+        self.finding_identities = {}
 
     @property
     def busy(self):
@@ -249,6 +270,24 @@ class Scanner:
     def findings_snapshot(self):
         with self.lock:
             return list(self.finding_lines)
+
+    def finding_paths_snapshot(self):
+        with self.lock:
+            return list(self.finding_paths)
+
+    def remove_finding(self, path):
+        with self.lock:
+            try:
+                index = self.finding_paths.index(str(path))
+            except ValueError:
+                return
+            self.finding_paths.pop(index)
+            self.finding_lines.pop(index)
+            self.finding_identities.pop(str(path), None)
+
+    def finding_identity(self, path):
+        with self.lock:
+            return self.finding_identities.get(str(path))
 
     def append(self, line: str):
         with self.lock:
@@ -280,6 +319,8 @@ class Scanner:
                 self.phase, self.current = "counting", ""
                 self.pending = set()
                 self.finding_lines = []
+                self.finding_paths = []
+                self.finding_identities = {}
             self.started = time.monotonic()
             self.thread = threading.Thread(target=self._run, args=(command, recursive, database, max_filesize_mib, max_scansize_mib), daemon=False)
             self.thread.start()
@@ -301,10 +342,11 @@ class Scanner:
                 self.errors += 1
         self.append(f"Пропущено: {path}: {reason}")
 
-    def _inventory(self, recursive):
+    def _inventory(self, recursive, ignored_paths=()):
         target = Path(self.path)
         root_device = target.stat().st_dev
         files = []
+        ignored_paths = {self.store.normalize_path(path) for path in ignored_paths}
         excluded_roots = {path.absolute() for path in (
             self.store.config_dir, self.store.state_dir, self.store.data_dir
         )}
@@ -319,12 +361,14 @@ class Scanner:
         def add(path):
             if is_excluded(path):
                 return
+            text = str(path)
+            if self.store.normalize_path(text) in ignored_paths:
+                return
             try:
                 mode = path.lstat()
                 if not stat.S_ISREG(mode.st_mode):
                     self._omit(path, "не обычный файл")
                     return
-                text = str(path)
                 if "\n" in text or "\r" in text:
                     self._omit(path, "перевод строки в имени не поддерживается file-list", True)
                     return
@@ -400,6 +444,13 @@ class Scanner:
                     if found:
                         self.found += 1
                         self.finding_lines.append(safe_text(line))
+                        self.finding_paths.append(candidate)
+                        try:
+                            info = Path(candidate).lstat()
+                            self.finding_identities[candidate] = (
+                                info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+                        except OSError:
+                            self.finding_identities[candidate] = None
                     if error:
                         self.errors += 1
                     if skipped:
@@ -412,7 +463,7 @@ class Scanner:
         manifest = None
         try:
             self.append("Составляем список файлов…")
-            files = self._inventory(recursive)
+            files = self._inventory(recursive, self.store.ignored_paths())
             with self.lock:
                 self.pending = set(files)
                 self.phase = "loading"
