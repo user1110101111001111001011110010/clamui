@@ -11,6 +11,7 @@ import tempfile
 import threading
 
 from .core import safe_text
+from .package_managers import is_termux
 from .process import stream_process
 
 
@@ -70,6 +71,20 @@ class Updater:
             "TestDatabases yes\nConnectTimeout 10\nReceiveTimeout 60\nMaxAttempts 2\n"
             "Foreground yes\nLogTime yes\n")
 
+    def _workspace(self):
+        local_tmp = self.store.state_dir / "tmp"
+        parents = (local_tmp, Path("/tmp")) if is_termux() else (Path("/tmp"), local_tmp)
+        last_error = None
+        for parent in parents:
+            try:
+                if parent != Path("/tmp"):
+                    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    parent.chmod(0o700)
+                return Path(tempfile.mkdtemp(dir=parent, prefix="clamui-freshclam-"))
+            except OSError as exc:
+                last_error = exc
+        raise last_error
+
     def _run(self, command, config):
         staging = None
         workspace = None
@@ -81,10 +96,9 @@ class Updater:
         status = "failed"
         try:
             previous = self.store.active_database()
-            # Mint/Ubuntu's freshclam AppArmor profile allows owner /tmp/**,
-            # but not arbitrary XDG paths. Keep every file freshclam touches in
-            # a private 0700 workspace. No profile changes or privilege elevation.
-            workspace = Path(tempfile.mkdtemp(dir="/tmp", prefix="clamui-freshclam-"))
+            # Prefer /tmp on Mint/Ubuntu because their freshclam AppArmor profile
+            # allows it. Termux and restricted systems use ClamUI's private state.
+            workspace = self._workspace()
             staging = workspace / "databases"
             staging.mkdir(mode=0o700)
             self.append("Обновляем пользовательские базы ClamUI; системная служба не затрагивается.")
@@ -117,7 +131,7 @@ class Updater:
                     for name in ("main", "daily", "bytecode"):
                         if not any((staging / f"{name}.{ext}").is_file() for ext in ("cvd", "cld")):
                             raise ValueError(f"Не получена база {name}; прежние базы сохранены")
-                    # /tmp and XDG_DATA_HOME can be on different filesystems.
+                    # The workspace and XDG_DATA_HOME can be on different filesystems.
                     # Copy first, then atomically publish a pointer on the target FS.
                     destination = Path(tempfile.mkdtemp(dir=self.store.data_dir, prefix="db-"))
                     self.append("Сохраняем проверенные базы в каталог ClamUI…")

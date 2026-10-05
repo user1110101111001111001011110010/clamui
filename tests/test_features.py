@@ -256,6 +256,28 @@ class FeatureTests(unittest.TestCase):
         self.assertEqual((active / 'daily.cvd').read_text(), 'fixture')
         self.assertFalse(list(active.glob('*.conf')))
 
+    def test_termux_update_uses_private_local_temporary_directory(self):
+        engine = self.executable("import sys\nfrom pathlib import Path\nc=Path(next(a.split('=',1)[1] for a in sys.argv if a.startswith('--config-file=')))\nd=Path(next(a.split('=',1)[1] for a in sys.argv if a.startswith('--datadir=')))\nassert c.parent.parent.name == 'tmp'\nassert c.parent.parent.parent == Path(" + repr(str(self.store.state_dir)) + ")\nprint('workspace=' + str(c.parent),flush=True)\nfor name in ('main','daily','bytecode'): (d/(name+'.cvd')).write_text('fixture')\n")
+        updater = Updater(self.store, engine)
+        with patch("clamui.updates.is_termux", return_value=True):
+            updater.start(Config())
+            self.wait(updater)
+        self.assertEqual(updater.snapshot()[0], "success")
+        work = next(x.split('=', 1)[1] for x in updater.snapshot()[1] if x.startswith('workspace='))
+        self.assertFalse(Path(work).exists())
+
+    def test_scans_exclude_clamui_configuration_state_and_databases(self):
+        scan_root = self.root / "all-user-data"
+        scan_root.mkdir()
+        target = scan_root / "document.txt"
+        target.write_text("safe")
+        for directory in (self.store.config_dir, self.store.state_dir, self.store.data_dir):
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "internal.dat").write_text("ClamUI data")
+        scanner = Scanner(self.store, "unused")
+        scanner.path = str(scan_root)
+        self.assertEqual(scanner._inventory(recursive=True), [str(target)])
+
     def test_scan_and_update_are_mutually_exclusive(self):
         self.store.activity.acquire()
         updater = Updater(self.store, self.executable("pass"))

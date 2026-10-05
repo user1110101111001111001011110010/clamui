@@ -101,7 +101,8 @@ Files added after inventory are not included. The inventory records paths, not a
 snapshot of file contents; files may change during the scan. Symlinks, special
 files, and traversal onto other filesystems are excluded. Names containing newlines
 or non-UTF-8 bytes are skipped because a file list cannot reliably pass and match
-them. ClamUI does not delete or move scanned files.
+them. ClamUI's own configuration, history, and database directories are
+automatically excluded. ClamUI does not delete or move scanned files.
 
 Settings let you change the maximum individual file size (`--max-filesize`, default
 100 MiB, range 1–2048) and maximum scan size (`--max-scansize`, default 400 MiB,
@@ -136,8 +137,9 @@ providers. A configured address can be assigned as the primary or backup mirror.
 Database updates do not require administrator privileges. `/etc/clamav`, the system
 freshclam service, clamd, and other applications are not modified or switched to
 ClamUI's databases. Temporary freshclam configuration and databases are created in
-a private directory under `/tmp`: Mint's AppArmor profile allows freshclam to use
-this directory, while access to `~/.local/state/clamui` may be denied. After a
+a private directory under `/tmp` on Mint, where AppArmor allows freshclam to use it.
+Termux and systems where `/tmp` is unavailable use a private temporary directory
+under ClamUI's state directory. After a
 successful verification, database files are copied into `$XDG_DATA_HOME/clamui` and
 activated atomically. `/tmp` needs room for roughly one extra copy of the databases
 during an update. A running system freshclam may still contact its own sources;

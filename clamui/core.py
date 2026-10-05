@@ -305,7 +305,20 @@ class Scanner:
         target = Path(self.path)
         root_device = target.stat().st_dev
         files = []
+        excluded_roots = {path.absolute() for path in (
+            self.store.config_dir, self.store.state_dir, self.store.data_dir
+        )}
+
+        def is_excluded(path):
+            absolute = path.absolute()
+            return any(absolute == root or root in absolute.parents for root in excluded_roots)
+
+        if is_excluded(target):
+            return files
+
         def add(path):
+            if is_excluded(path):
+                return
             try:
                 mode = path.lstat()
                 if not stat.S_ISREG(mode.st_mode):
@@ -335,6 +348,8 @@ class Scanner:
                 if self.cancelled.is_set():
                     break
                 path = Path(directory) / name
+                if is_excluded(path):
+                    continue
                 try:
                     info = path.lstat()
                     if stat.S_ISLNK(info.st_mode) or info.st_dev != root_device:
