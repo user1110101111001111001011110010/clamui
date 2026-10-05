@@ -263,6 +263,8 @@ class TerminalUI:
         if items:
             self.selected = max(0, min(self.selected, len(items) - 1))
             slots = (h - 10) if self.page == "browser" else min(8, h - 12)
+            if self.page == "home":
+                slots = len(items)
             first = max(0, self.selected - slots + 1)
             for y, (label, _) in enumerate(items[first:first + slots], 5):
                 index = first + y - 5
@@ -270,8 +272,10 @@ class TerminalUI:
                            curses.A_REVERSE if index == self.selected else 0)
         y = 5 + min(len(items), min(8, h - 12)) + 1
         if self.page == "home":
+            y = 5 + len(items) + 1
             self.write(y, 4, "Выберите действие и нажмите Enter.", curses.A_DIM)
-            self.write(y + 1, 4, "Локальное сканирование • действия только вручную", curses.A_DIM)
+            if y + 1 < h - 3:
+                self.write(y + 1, 4, "Локальное сканирование • действия только вручную", curses.A_DIM)
         elif self.page == "engine_missing":
             missing = ", ".join(missing_clamav_tools())
             self.write(y, 2, "Не найдены обязательные исполняемые файлы: " + missing, accent)
