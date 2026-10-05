@@ -81,13 +81,15 @@ class FeatureTests(unittest.TestCase):
               patch("clamui.tui.curses.def_prog_mode"),
               patch("clamui.tui.curses.endwin"),
               patch("clamui.tui.curses.reset_prog_mode"),
-              patch("clamui.tui.subprocess.run", return_value=SimpleNamespace(returncode=100))):
+              patch("clamui.tui.subprocess.run", return_value=SimpleNamespace(
+                  returncode=100, stdout="E: Не хватает места на устройстве\n"))):
             ui = TerminalUI(Screen(), self.store, Config())
             ui.install_engine()
 
         self.assertIn("с кодом 100", ui.notice)
         self.assertIn("clamscan", ui.notice)
         self.assertIn("freshclam", ui.notice)
+        self.assertIn("E: Не хватает места на устройстве", ui.install_output)
 
     def test_tab_completes_spaces_and_cycles_ambiguous_matches(self):
         (self.root / "My folder").mkdir()

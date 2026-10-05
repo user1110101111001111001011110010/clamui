@@ -47,6 +47,7 @@ class TerminalUI:
         self.scan_list_scroll = 0
         self.target = str(Path.home())
         self.notice = ""
+        self.install_output = []
         self.engine = "Определяем версию ClamAV…"
         self.rows = []
         self.record = None
@@ -174,7 +175,14 @@ class TerminalUI:
             self.write(y, 2, "Не найдены обязательные исполняемые файлы: " + missing, accent)
             self.write(y + 1, 2, "ClamUI использует clamscan для проверки, freshclam для обновления баз.")
             self.write(y + 2, 2, "Можно установить соответствующие пакеты сейчас. Потребуются права администратора.")
-            self.write(y + 3, 2, "Установка покажет запрос sudo, ход apt и сообщения об ошибках в терминале.", curses.A_DIM)
+            self.write(y + 3, 2, "После установки здесь останутся вывод apt и ошибки; PgUp/PgDn — прокрутка.", curses.A_DIM)
+            if self.install_output:
+                top, bottom = y + 5, h - 4
+                visible = max(0, bottom - top)
+                max_scroll = max(0, len(self.install_output) - visible)
+                self.scroll = max(0, min(self.scroll, max_scroll))
+                for row, line in enumerate(self.install_output[self.scroll:self.scroll + visible], top):
+                    self.write(row, 2, line, curses.A_DIM)
         elif self.page == "scan":
             status, _, _, _ = self.scanner.snapshot()
             elapsed = time.monotonic() - self.scanner.started if self.scanner.busy else self.scanner.elapsed
@@ -253,6 +261,8 @@ class TerminalUI:
                   if self.page == "scan" else "↑↓ Выбор/прокрутка  Enter Открыть  Esc Назад  F1 Справка")
         if self.page == "scan":
             footer = "↑↓ меню  F5 Запуск  F6 Остановить  PgUp/PgDn список угроз  Esc назад"
+        elif self.page == "engine_missing" and self.install_output:
+            footer = "↑↓ выбор  Enter действие  PgUp/PgDn журнал установки  Esc выход"
         self.write(h - 2, 2, footer, curses.A_DIM)
         if self.edit:
             self.render_editor(h, w)
@@ -501,6 +511,8 @@ class TerminalUI:
             self.go(action)
 
     def install_engine(self):
+        self.install_output = []
+        self.scroll = 0
         packages = sorted({package for _, package in missing_clamav_tools()})
         if not packages:
             self.go("home")
@@ -516,7 +528,9 @@ class TerminalUI:
         try:
             curses.def_prog_mode()
             curses.endwin()
-            result = subprocess.run([sudo, apt_get, "install", *packages], check=False)
+            result = subprocess.run([sudo, apt_get, "install", *packages], check=False,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, errors="replace")
         except KeyboardInterrupt:
             failure = "Установку прервали с клавиатуры."
         except (OSError, subprocess.SubprocessError, curses.error) as exc:
@@ -529,6 +543,10 @@ class TerminalUI:
             except curses.error:
                 pass
         missing = missing_clamav_tools()
+        output = getattr(result, "stdout", "") if result is not None else ""
+        if output:
+            self.install_output = [safe_text(line) for line in output.replace("\r", "\n").splitlines() if line][-500:]
+            self.scroll = len(self.install_output)
         if result is not None and result.returncode != 0:
             failure = f"Процесс установки завершился с кодом {result.returncode}."
         if missing:
