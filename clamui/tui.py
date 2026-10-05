@@ -4,6 +4,8 @@ from __future__ import annotations
 import curses
 from dataclasses import replace
 from pathlib import Path
+import os
+import queue
 import shutil
 import subprocess
 import threading
@@ -48,6 +50,8 @@ class TerminalUI:
         self.target = str(Path.home())
         self.notice = ""
         self.install_output = []
+        self.installing = False
+        self.install_follow = True
         self.engine = "Определяем версию ClamAV…"
         self.rows = []
         self.record = None
@@ -174,8 +178,9 @@ class TerminalUI:
             missing = ", ".join(executable for executable, _ in missing_clamav_tools())
             self.write(y, 2, "Не найдены обязательные исполняемые файлы: " + missing, accent)
             self.write(y + 1, 2, "ClamUI использует clamscan для проверки, freshclam для обновления баз.")
-            self.write(y + 2, 2, "Можно установить соответствующие пакеты сейчас. Потребуются права администратора.")
-            self.write(y + 3, 2, "После установки здесь останутся вывод apt и ошибки; PgUp/PgDn — прокрутка.", curses.A_DIM)
+            self.write(y + 2, 2, "Установка идёт… вывод apt обновляется ниже." if self.installing else
+                       "Можно установить соответствующие пакеты сейчас. Потребуются права администратора.")
+            self.write(y + 3, 2, "PgUp/PgDn — прокрутка вывода установки.", curses.A_DIM)
             if self.install_output:
                 top, bottom = y + 5, h - 4
                 visible = max(0, bottom - top)
@@ -513,6 +518,7 @@ class TerminalUI:
     def install_engine(self):
         self.install_output = []
         self.scroll = 0
+        self.install_follow = True
         packages = sorted({package for _, package in missing_clamav_tools()})
         if not packages:
             self.go("home")
@@ -525,16 +531,15 @@ class TerminalUI:
             return
         result = None
         failure = ""
+        authorization = None
         try:
             curses.def_prog_mode()
             curses.endwin()
-            result = subprocess.run([sudo, apt_get, "install", *packages], check=False,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, errors="replace")
+            authorization = subprocess.run([sudo, "-v"], check=False)
         except KeyboardInterrupt:
-            failure = "Установку прервали с клавиатуры."
+            failure = "Запрос прав sudo прервали с клавиатуры."
         except (OSError, subprocess.SubprocessError, curses.error) as exc:
-            failure = "Не удалось запустить установщик: " + safe_text(exc)
+            failure = "Не удалось получить права для установки: " + safe_text(exc)
         finally:
             try:
                 curses.reset_prog_mode()
@@ -542,13 +547,16 @@ class TerminalUI:
                 self.win.refresh()
             except curses.error:
                 pass
+        if not failure and authorization is not None and authorization.returncode != 0:
+            failure = f"Не удалось получить права sudo (код {authorization.returncode})."
+        if not failure:
+            try:
+                result = self._run_installer(sudo, apt_get, packages)
+            except (OSError, subprocess.SubprocessError) as exc:
+                failure = "Не удалось запустить установщик: " + safe_text(exc)
         missing = missing_clamav_tools()
-        output = getattr(result, "stdout", "") if result is not None else ""
-        if output:
-            self.install_output = [safe_text(line) for line in output.replace("\r", "\n").splitlines() if line][-500:]
-            self.scroll = len(self.install_output)
-        if result is not None and result.returncode != 0:
-            failure = f"Процесс установки завершился с кодом {result.returncode}."
+        if result is not None and result != 0:
+            failure = f"Процесс установки завершился с кодом {result}."
         if missing:
             names = ", ".join(executable for executable, _ in missing)
             detail = "После попытки установки всё ещё не найдены: " + names
@@ -558,6 +566,67 @@ class TerminalUI:
         self.go("home")
         self.notice = ("Компоненты ClamAV установлены и доступны."
                        if not failure else "Исполняемые файлы доступны, но " + failure)
+
+    def _run_installer(self, sudo, apt_get, packages):
+        output_queue = queue.Queue()
+        self.install_output = []
+        self.scroll = 0
+        self.install_follow = True
+        process = subprocess.Popen(
+            [sudo, "-n", apt_get, "-y", "install", *packages],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            # Keep sudo attached to the same controlling TTY used by `sudo -v`.
+            # A detached session can invalidate per-TTY sudo credentials.
+            text=True, errors="replace", bufsize=1,
+            env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"})
+
+        def read_output():
+            try:
+                for line in process.stdout:
+                    for part in line.replace("\r", "\n").splitlines():
+                        if part:
+                            output_queue.put(part)
+            finally:
+                output_queue.put(None)
+
+        reader = threading.Thread(target=read_output, daemon=True)
+        reader.start()
+        self.installing = True
+        try:
+            self.render()
+            finished_reading = False
+            while process.poll() is None or not finished_reading:
+                try:
+                    while True:
+                        line = output_queue.get_nowait()
+                        if line is None:
+                            finished_reading = True
+                            break
+                        self.install_output.append(safe_text(line))
+                        if len(self.install_output) > 500:
+                            self.install_output = self.install_output[-500:]
+                        if self.install_follow:
+                            self.scroll = len(self.install_output)
+                except queue.Empty:
+                    pass
+                self.render()
+                try:
+                    key = self.win.get_wch()
+                except curses.error:
+                    key = None
+                if key in (curses.KEY_NPAGE, curses.KEY_PPAGE):
+                    page = max(1, self.win.getmaxyx()[0] - 15)
+                    self.scroll += page if key == curses.KEY_NPAGE else -page
+                    max_scroll = max(0, len(self.install_output) - page)
+                    self.scroll = max(0, min(self.scroll, max_scroll))
+                    self.install_follow = key == curses.KEY_NPAGE and self.scroll >= max_scroll
+                elif key in ("\x03", "\x1b"):
+                    self.notice = "Установка выполняется; дождитесь её завершения."
+            return process.wait()
+        finally:
+            self.installing = False
+            reader.join()
+            process.stdout.close()
 
     def run(self):
         curses.set_escdelay(40)

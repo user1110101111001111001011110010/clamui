@@ -1,4 +1,5 @@
 from pathlib import Path
+import io
 import tempfile
 import time
 import unittest
@@ -76,20 +77,39 @@ class FeatureTests(unittest.TestCase):
             def refresh(self):
                 pass
 
+            def get_wch(self):
+                time.sleep(.01)
+                raise __import__("curses").error
+
+            def getmaxyx(self):
+                return 24, 80
+
+        class Process:
+            stdout = io.StringIO("Чтение списков пакетов…\nE: Не хватает места на устройстве\n")
+
+            def poll(self):
+                return 100
+
+            def wait(self):
+                return 100
+
         with (patch("clamui.tui.missing_clamav_tools", return_value=missing),
               patch("clamui.tui.shutil.which", side_effect=lambda name: "/usr/bin/" + name),
               patch("clamui.tui.curses.def_prog_mode"),
               patch("clamui.tui.curses.endwin"),
               patch("clamui.tui.curses.reset_prog_mode"),
-              patch("clamui.tui.subprocess.run", return_value=SimpleNamespace(
-                  returncode=100, stdout="E: Не хватает места на устройстве\n"))):
+              patch("clamui.tui.subprocess.run", return_value=SimpleNamespace(returncode=0)),
+              patch("clamui.tui.subprocess.Popen", return_value=Process()) as popen):
             ui = TerminalUI(Screen(), self.store, Config())
+            ui.render = lambda: None
             ui.install_engine()
 
-        self.assertIn("с кодом 100", ui.notice)
         self.assertIn("clamscan", ui.notice)
         self.assertIn("freshclam", ui.notice)
+        self.assertIn("кодом 100", ui.notice)
         self.assertIn("E: Не хватает места на устройстве", ui.install_output)
+        self.assertIn("-y", popen.call_args.args[0])
+        self.assertNotIn("start_new_session", popen.call_args.kwargs)
 
     def test_tab_completes_spaces_and_cycles_ambiguous_matches(self):
         (self.root / "My folder").mkdir()
