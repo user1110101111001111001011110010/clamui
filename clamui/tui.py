@@ -79,7 +79,7 @@ class TerminalUI:
         if self.page == "engine_missing":
             packages = sorted({package for _, package in missing_clamav_tools()})
             return [("Установить пакеты: " + ", ".join(packages), "install_engine"),
-                    ("Продолжить без установки", "home"), ("Выход", "exit")]
+                    ("Выйти из ClamUI", "exit")]
         if self.page == "scan":
             return [("Выбрать файл или папку…", "browse"),
                     ("Путь: " + safe_text(self.target) + " [Tab]", "path"),
@@ -174,7 +174,7 @@ class TerminalUI:
             self.write(y, 2, "Не найдены обязательные исполняемые файлы: " + missing, accent)
             self.write(y + 1, 2, "ClamUI использует clamscan для проверки, freshclam для обновления баз.")
             self.write(y + 2, 2, "Можно установить соответствующие пакеты сейчас. Потребуются права администратора.")
-            self.write(y + 3, 2, "После выбора откроется обычный запрос пароля sudo и подтверждение apt.", curses.A_DIM)
+            self.write(y + 3, 2, "Установка покажет запрос sudo, ход apt и сообщения об ошибках в терминале.", curses.A_DIM)
         elif self.page == "scan":
             status, _, _, _ = self.scanner.snapshot()
             elapsed = time.monotonic() - self.scanner.started if self.scanner.busy else self.scanner.elapsed
@@ -511,13 +511,16 @@ class TerminalUI:
         if not apt_get or not sudo:
             self.notice = "Автоустановка недоступна. Выполните: sudo apt-get install " + " ".join(packages)
             return
+        result = None
+        failure = ""
         try:
             curses.def_prog_mode()
             curses.endwin()
             result = subprocess.run([sudo, apt_get, "install", *packages], check=False)
-        except (OSError, curses.error) as exc:
-            result = None
-            self.notice = "Не удалось запустить установщик: " + safe_text(exc)
+        except KeyboardInterrupt:
+            failure = "Установку прервали с клавиатуры."
+        except (OSError, subprocess.SubprocessError, curses.error) as exc:
+            failure = "Не удалось запустить установщик: " + safe_text(exc)
         finally:
             try:
                 curses.reset_prog_mode()
@@ -526,14 +529,17 @@ class TerminalUI:
             except curses.error:
                 pass
         missing = missing_clamav_tools()
-        if not missing:
-            self.engine = "Системные базы · " + engine_status()
-            self.go("home")
-            self.notice = "Компоненты ClamAV установлены и доступны."
-        elif result is not None:
+        if result is not None and result.returncode != 0:
+            failure = f"Процесс установки завершился с кодом {result.returncode}."
+        if missing:
             names = ", ".join(executable for executable, _ in missing)
-            self.notice = ("Не удалось установить компоненты ClamAV."
-                           if not names else "После установки всё ещё не найдены: " + names)
+            detail = "После попытки установки всё ещё не найдены: " + names
+            self.notice = (failure + " " + detail).strip()
+            return
+        self.engine = "Системные базы · " + engine_status()
+        self.go("home")
+        self.notice = ("Компоненты ClamAV установлены и доступны."
+                       if not failure else "Исполняемые файлы доступны, но " + failure)
 
     def run(self):
         curses.set_escdelay(40)

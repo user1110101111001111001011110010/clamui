@@ -2,6 +2,8 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from clamui.core import Config, Scanner, Store
 from clamui.paths import FileBrowser, complete_path
@@ -54,6 +56,38 @@ class FeatureTests(unittest.TestCase):
         ui.activate("choose_dir")
         self.assertEqual(ui.target, str(self.root / "directory"))
         self.assertEqual(ui.page, "scan")
+
+    def test_declining_engine_install_exits_clamui(self):
+        missing = [("clamscan", "clamav"), ("freshclam", "clamav-freshclam")]
+        with patch("clamui.tui.missing_clamav_tools", return_value=missing):
+            ui = TerminalUI(None, self.store, Config())
+            self.assertEqual(ui.page, "engine_missing")
+            self.assertEqual(ui.menu()[-1], ("Выйти из ClamUI", "exit"))
+            ui.activate("exit")
+            self.assertTrue(ui.exit_requested)
+
+    def test_failed_apt_install_reports_exit_code_and_missing_tools(self):
+        missing = [("clamscan", "clamav"), ("freshclam", "clamav-freshclam")]
+
+        class Screen:
+            def clear(self):
+                pass
+
+            def refresh(self):
+                pass
+
+        with (patch("clamui.tui.missing_clamav_tools", return_value=missing),
+              patch("clamui.tui.shutil.which", side_effect=lambda name: "/usr/bin/" + name),
+              patch("clamui.tui.curses.def_prog_mode"),
+              patch("clamui.tui.curses.endwin"),
+              patch("clamui.tui.curses.reset_prog_mode"),
+              patch("clamui.tui.subprocess.run", return_value=SimpleNamespace(returncode=100))):
+            ui = TerminalUI(Screen(), self.store, Config())
+            ui.install_engine()
+
+        self.assertIn("с кодом 100", ui.notice)
+        self.assertIn("clamscan", ui.notice)
+        self.assertIn("freshclam", ui.notice)
 
     def test_tab_completes_spaces_and_cycles_ambiguous_matches(self):
         (self.root / "My folder").mkdir()
