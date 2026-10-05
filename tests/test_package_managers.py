@@ -11,6 +11,15 @@ class PackageManagerTests(unittest.TestCase):
     def test_no_supported_manager_is_reported(self):
         self.assertIsNone(detect_package_manager(lambda _name: None))
 
+    def test_termux_prefers_unprivileged_pkg_over_apt(self):
+        selected = detect_package_manager(
+            lambda name: "/data/data/com.termux/files/usr/bin/" + name
+            if name in {"pkg", "apt-get"} else None,
+            {"TERMUX_VERSION": "0.118"},
+        )
+        self.assertEqual(selected.key, "termux")
+        self.assertEqual(selected.command(), ["pkg", "install", "-y", "clamav"])
+
     def test_commands_use_native_package_names_and_noninteractive_flags(self):
         expected = {
             "apt": ["apt-get", "install", "-y", "clamav", "clamav-freshclam"],

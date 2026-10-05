@@ -118,6 +118,23 @@ class FeatureTests(unittest.TestCase):
         self.assertIn("/usr/bin/apt-get", popen.call_args.args[0])
         self.assertNotIn("start_new_session", popen.call_args.kwargs)
 
+    def test_termux_install_does_not_require_sudo(self):
+        manager = PackageManager("termux", "Termux pkg", "pkg", ("install", "-y"), ("clamav",))
+        with (patch("clamui.tui.missing_clamav_tools", side_effect=[["clamscan"], ["clamscan"], []]),
+              patch("clamui.tui.detect_package_manager", return_value=manager),
+              patch("clamui.tui.os.geteuid", return_value=1000),
+              patch("clamui.tui.shutil.which", return_value=None),
+              patch("clamui.tui.curses.def_prog_mode"),
+              patch("clamui.tui.curses.endwin"),
+              patch("clamui.tui.curses.reset_prog_mode"),
+              patch("clamui.tui.TerminalUI._run_installer", return_value=0) as run_installer):
+            ui = TerminalUI(None, self.store, Config())
+            ui.win = SimpleNamespace(clear=lambda: None, refresh=lambda: None)
+            ui.install_engine()
+
+        run_installer.assert_called_once_with(None, manager)
+        self.assertIn("установлены", ui.notice)
+
     def test_tab_completes_spaces_and_cycles_ambiguous_matches(self):
         (self.root / "My folder").mkdir()
         self.assertEqual(complete_path(str(self.root / "My"))[0], str(self.root / "My folder") + "/")

@@ -582,9 +582,10 @@ class TerminalUI:
             supported = ", ".join(candidate.label for candidate in PACKAGE_MANAGERS)
             self.notice = "Пакетный менеджер не распознан. Установите ClamAV вручную; поддерживаются: " + supported
             return
+        termux = manager.key == "termux"
         is_root = os.geteuid() == 0
-        sudo = None if is_root else shutil.which("sudo")
-        if not is_root and not sudo:
+        sudo = None if is_root or termux else shutil.which("sudo")
+        if not is_root and not termux and not sudo:
             command = manual_install_command(manager, sudo=False)
             self.notice = "Автоустановка требует sudo; запустите эту команду от root: " + command
             return

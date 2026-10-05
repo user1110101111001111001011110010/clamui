@@ -6,7 +6,8 @@ Python 3.11+ and has no third-party Python dependencies. Scanning requires
 
 ClamUI checks for both executables at startup. If either is missing, it can install
 ClamAV through a detected package manager: APT, DNF/YUM, Zypper, Pacman, APK,
-FreeBSD `pkg`, `pkgin`, OpenBSD `pkg_add`, or Gentoo Portage. RPM-based systems use
+Termux `pkg` (without root), FreeBSD `pkg`, `pkgin`, OpenBSD `pkg_add`, or Gentoo
+Portage. RPM-based systems use
 DNF/YUM or Zypper; `rpm` itself does not resolve repository dependencies. The
 installer output and errors appear in the ClamUI window. Installation requires
 administrator privileges; ClamUI requests them through `sudo` or can be run as root.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import shutil
 
 
@@ -20,6 +21,7 @@ class PackageManager:
 # RPM systems use dnf/yum/zypper to resolve repository dependencies; `rpm` itself
 # is a low-level package tool and cannot safely resolve ClamAV's dependencies.
 PACKAGE_MANAGERS = (
+    PackageManager("termux", "Termux pkg", "pkg", ("install", "-y"), ("clamav",)),
     PackageManager("apt", "APT", "apt-get", ("install", "-y"),
                    ("clamav", "clamav-freshclam")),
     PackageManager("dnf", "DNF (RPM)", "dnf", ("install", "-y"),
@@ -38,8 +40,17 @@ PACKAGE_MANAGERS = (
 )
 
 
-def detect_package_manager(which=shutil.which) -> PackageManager | None:
+def is_termux(environ=None) -> bool:
+    """Detect the Termux app environment without relying on Android root access."""
+    environ = os.environ if environ is None else environ
+    prefix = environ.get("PREFIX", "")
+    return bool(environ.get("TERMUX_VERSION") or "/com.termux/files/usr" in prefix)
+
+
+def detect_package_manager(which=shutil.which, environ=None) -> PackageManager | None:
     """Return the first supported manager available on this system."""
+    if is_termux(environ) and which("pkg"):
+        return next(manager for manager in PACKAGE_MANAGERS if manager.key == "termux")
     return next((manager for manager in PACKAGE_MANAGERS if which(manager.executable)), None)
 
 

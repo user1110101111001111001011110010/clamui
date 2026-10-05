@@ -5,8 +5,9 @@ Python-зависимостей. Для проверки нужен `clamscan`, 
 
 При запуске TUI ClamUI проверяет наличие обеих команд и, если что-то отсутствует,
 предлагает установить ClamAV через найденный системный менеджер пакетов:
-APT, DNF/YUM, Zypper, Pacman, APK, FreeBSD `pkg`, `pkgin`, OpenBSD `pkg_add`
-или Gentoo Portage. В RPM-дистрибутивах ClamAV устанавливается через DNF/YUM или
+APT, DNF/YUM, Zypper, Pacman, APK, Termux `pkg` (без root), FreeBSD `pkg`,
+`pkgin`, OpenBSD `pkg_add` или Gentoo Portage. В RPM-дистрибутивах ClamAV
+устанавливается через DNF/YUM или
 Zypper, поскольку `rpm` сам по себе не разрешает зависимости. Процесс установки
 и его ошибки отображаются в окне ClamUI. Для системных пакетов потребуются права
 администратора; ClamUI запрашивает их через `sudo` либо запускается от root.
